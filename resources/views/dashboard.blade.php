@@ -41,10 +41,6 @@
             </header>
 
             <div class="intro-col">
-                <p class="intro-badge lm-reveal" style="--d: 320ms">
-                    <span class="dot" :class="online ? 'dot-ok' : 'dot-bad'" aria-hidden="true"></span>
-                    <span x-text="introBadge"></span>
-                </p>
                 <h1 id="intro-title" class="intro-title" x-init="splitWords($el, 480, 85)">Integrated Real Time Water Quality System</h1>
                 <p class="intro-sub" x-init="splitWords($el, 1150, 22)">pH, TDS, turbidity, and temperature from IoT sensors, evaluated automatically on every trial.</p>
 
@@ -65,15 +61,17 @@
 
     {{-- ============ INPUT DETECTED MODAL ============ --}}
     <template x-if="showInputDetected && entered">
-        <div class="overlay" @click.self.prevent>
+        <div class="overlay" @click.self.prevent @keydown.escape="dismissTrialPrompt()">
             <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="judul-input-detected" tabindex="-1" style="width: 480px">
                 <div class="dialog-head" style="border-bottom: none; padding-bottom: 0">
                     <div style="width: 100%; text-align: center">
                         <div style="margin: 0 auto 16px; width: 72px; height: 72px; border-radius: 22px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center">
                             <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s-6 6.6-6 11.3a6 6 0 0 0 12 0c0-4.7-6-11.3-6-11.3z"/></svg>
                         </div>
-                        <div class="chip chip-online" style="margin-bottom: 12px"><span class="dot dot-ok" aria-hidden="true"></span>Input Detected</div>
-                        <h2 id="judul-input-detected" class="dialog-title" style="font-size: 20px">IoT sensor detected water</h2>
+                        <template x-if="!trialPromptManual">
+                            <div class="chip chip-online" style="margin-bottom: 12px"><span class="dot dot-ok" aria-hidden="true"></span>Input Detected</div>
+                        </template>
+                        <h2 id="judul-input-detected" class="dialog-title" style="font-size: 20px" x-text="trialPromptManual ? 'Start a new trial' : 'IoT sensor detected water'">IoT sensor detected water</h2>
                         <p class="page-sub" style="margin-top: 8px">Enter a trial name to start a new trial session.</p>
                     </div>
                 </div>
@@ -95,6 +93,7 @@
                             <span>Start Trial</span>
                         </template>
                     </button>
+                    <button type="button" class="btn-outline btn" style="width: 100%; margin-top: 10px" @click="dismissTrialPrompt()" :disabled="trialStarting">Not now</button>
                 </div>
             </div>
         </div>
@@ -193,9 +192,9 @@
                 <div class="divider"></div>
                 <div class="side-heading">Device</div>
                 <div class="device-box">
-                    <div class="kv"><span>Status</span><strong :class="online ? 't-ok' : 't-bad'" x-text="online ? 'Online' : 'Offline'"></strong></div>
+                    <div class="kv"><span>Status</span><strong :class="deviceStatusClass" x-text="deviceStatus"></strong></div>
                     <div class="kv"><span>Power</span><strong :class="powerClass" x-text="powerLabel"></strong></div>
-                    <div class="kv"><span>Sample</span><strong x-text="activeTrial ? activeTrial.name : device.sampel"></strong></div>
+                    <div class="kv"><span>Sample</span><strong :class="{ 't-dim': !activeTrial }" x-text="activeTrial ? activeTrial.name : '—'" :title="activeTrial ? activeTrial.name : 'No active trial'"></strong></div>
                     <div class="kv"><span>Active Sensors</span><strong x-text="sensorList.length"></strong></div>
                     <div class="kv"><span>Last Sync</span><strong x-text="lastSync"></strong></div>
                 </div>
@@ -272,7 +271,7 @@
                 <div class="banner banner-warn" role="status">
                     <span class="banner-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2l20 20"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.8"/><path d="M19 12.9a10 10 0 0 0-2.4-1.7"/><path d="M12 20h.01"/></svg></span>
                     <div class="banner-body">
-                        <div class="banner-title">Device offline. The data below is the last reading (<span x-text="lastSync"></span>).</div>
+                        <div class="banner-title" x-text="hasData ? 'Device offline. The data below is the last reading (' + lastSync + ').' : 'Device offline. No readings have been received yet.'"></div>
                         <div class="banner-text">Turn the device on, make sure it is connected to Wi-Fi, then sync again.</div>
                     </div>
                     <button type="button" class="btn-warn btn" :class="{ 'is-loading': sync === 'loading' }" @click="power === 'on' ? doSync() : togglePower()" :disabled="sync === 'loading'" :aria-busy="(sync === 'loading').toString()">
@@ -288,23 +287,94 @@
                     <span class="banner-icon" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></span>
                     <div class="banner-body">
                         <div class="banner-title">Device is turned off. Sensors are not reading data.</div>
-                        <div class="banner-text">Values below are the last reading (<span x-text="lastSync"></span>). Sync becomes available again once the device is on.</div>
+                        <div class="banner-text" x-text="hasData ? 'Values below are the last reading (' + lastSync + '). Sync becomes available again once the device is on.' : 'Turn the device on to start reading water samples. Sync becomes available once it is on.'"></div>
                     </div>
                     <button type="button" class="btn-primary sm btn" @click="togglePower()">Turn on device</button>
                 </div>
             </template>
 
-            {{-- No data yet --}}
-            <template x-if="!hasData && !activeTrial">
-                <section class="card no-data" aria-label="No data yet">
-                    <div class="empty-title">No active trial</div>
-                    <div class="empty-text">The IoT sensor will detect water and start a new trial automatically.</div>
-                </section>
-            </template>
-
             {{-- ============ VIEW: DASHBOARD ============ --}}
             <template x-if="view === 'dashboard'">
                 <div class="view" :class="viewClass">
+
+                    {{-- Empty state: no trial yet, or a trial with no readings yet --}}
+                    <template x-if="!hasData">
+                        <section class="card empty-state" aria-labelledby="empty-state-title">
+                            <span class="empty-state-icon" aria-hidden="true">
+                                <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s-6 6.6-6 11.3a6 6 0 0 0 12 0c0-4.7-6-11.3-6-11.3z"/></svg>
+                            </span>
+                            <div class="empty-state-body">
+                                <h2 id="empty-state-title" class="empty-state-title" x-text="activeTrial ? 'Waiting for the first reading' : 'No active trial'"></h2>
+                                <p class="empty-state-text" x-text="emptyStateText"></p>
+                            </div>
+                            <div class="empty-state-actions">
+                                <template x-if="!activeTrial">
+                                    <button type="button" class="btn-primary btn" @click="openTrialPrompt()">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                        <span>Start a trial</span>
+                                    </button>
+                                </template>
+                                <template x-if="activeTrial">
+                                    <button type="button" class="btn-primary btn btn-sync" :class="{ 'is-loading': sync === 'loading' }" @click="doSync()" :disabled="syncDisabled" :aria-busy="(sync === 'loading').toString()">
+                                        <svg class="sync-icon" :class="{ spin: sync === 'loading' }" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                                        <span x-text="sync === 'loading' ? 'Syncing…' : 'Sync now'">Sync now</span>
+                                    </button>
+                                </template>
+                            </div>
+                        </section>
+                    </template>
+
+                    {{-- Empty sensor cards: every sensor, its unit and safe range, no value yet --}}
+                    <template x-if="!hasData">
+                        <section class="kpis" aria-label="Sensors waiting for data">
+                            <template x-for="s in sensorPlaceholders" :key="s.key">
+                                <article class="card kpi is-empty">
+                                    <div class="kpi-top">
+                                        <div>
+                                            <h3 class="kpi-name" x-text="s.nama"></h3>
+                                            <div class="kpi-value">
+                                                <span class="kpi-num" aria-label="No value yet">—</span>
+                                                <span class="kpi-unit" x-text="s.satuan"></span>
+                                            </div>
+                                        </div>
+                                        <span class="tile" :class="'tile-' + s.key" aria-hidden="true">
+                                            <svg x-show="s.key === 'ph'" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5c-.3 0-.6.1-.8.4C9.6 4.9 5.5 10 5.5 14a6.5 6.5 0 0 0 13 0c0-4-4.1-9.1-5.7-11.1a1 1 0 0 0-.8-.4z"/></svg>
+                                            <svg x-show="s.key === 'tds'" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M9 2h6v2h-1v5.3l5.6 9.4A2.2 2.2 0 0 1 17.7 22H6.3a2.2 2.2 0 0 1-1.9-3.3L10 9.3V4H9z"/></svg>
+                                            <svg x-show="s.key === 'kekeruhan'" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M2 7c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/><path d="M2 12c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/><path d="M2 17c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/></svg>
+                                            <svg x-show="s.key === 'suhu'" width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M10 2a3 3 0 0 0-3 3v9.1a5 5 0 1 0 8 0V5a3 3 0 0 0-3-3zm1 13.2V8h2v7.2a3 3 0 1 1-2 0z" transform="translate(-1 0)"/></svg>
+                                        </span>
+                                    </div>
+                                    <div class="kpi-tags">
+                                        <span class="tag tag-muted">No reading yet</span>
+                                        <span class="kpi-range">Normal <span x-text="s.rangeTxt"></span></span>
+                                    </div>
+                                    <div class="kpi-foot">
+                                        <span class="kpi-delta">Trend appears after 2 trials</span>
+                                        <span class="spark-empty" aria-hidden="true"></span>
+                                    </div>
+                                </article>
+                            </template>
+                        </section>
+                    </template>
+
+                    {{-- Empty chart: same frame as the history chart, with guidance --}}
+                    <template x-if="!hasData">
+                        <section class="card chart-card chart-empty" aria-label="History chart, no data yet">
+                            <div class="section-head">
+                                <div>
+                                    <h2 class="section-title"><span x-text="sampleLabel"></span> History</h2>
+                                    <p class="section-sub">Each trial will be plotted here, from the first reading to the latest.</p>
+                                </div>
+                            </div>
+                            <div class="chart-empty-plot">
+                                <svg class="chart-empty-wave" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c33 0 33-16 66-16s33 16 67 16 33-16 66-16 33 16 67 16 33-16 67-16 33 16 67 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 8"/></svg>
+                                <div class="chart-empty-text">
+                                    <strong>No data to chart yet</strong>
+                                    <span x-text="activeTrial ? 'Sync after the device sends its first reading.' : 'Start a trial, then sync to fetch readings from the device.'"></span>
+                                </div>
+                            </div>
+                        </section>
+                    </template>
 
                     {{-- Status --}}
                     <template x-if="hasData">
@@ -362,11 +432,11 @@
                                             <svg x-show="!s.up" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 7 6 6 4-4 8 8"/><path d="M15 17h6v-6"/></svg>
                                             <span><strong x-text="s.deltaTxt"></strong> <span x-text="s.deltaWord"></span></span>
                                         </span>
-                                        <div class="spark" role="img" :aria-label="s.sparkAria" x-effect="replayDraw($el, chartRev)">
+                                        <div class="spark" role="img" :aria-label="s.sparkAria" :data-x0="s.sparkX0" :data-x1="s.dotLeft" :data-n="s.sparkN" x-effect="replayDraw($el, chartRev)">
                                             <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
                                                 <polyline class="spark-line" :points="s.spark" fill="none" :style="{ stroke: s.lineColor }" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
                                             </svg>
-                                            <span class="spark-dot" aria-hidden="true" :style="{ left: s.dotLeft + '%', top: s.dotTop + '%', background: s.lineColor }"></span>
+                                            <span class="spark-dot" aria-hidden="true" :style="{ left: s.dotLeft + '%', top: s.dotTop + '%', background: s.lineColor, '--x': s.dotLeft }"></span>
                                         </div>
                                     </div>
                                 </article>
@@ -406,7 +476,7 @@
                             </div>
                             <div class="charts" :class="{ all: !single }">
                                 <template x-for="c in charts" :key="c.id">
-                                    <div class="chart">
+                                    <div class="chart" :data-x0="c.x0" :data-x1="c.x1" :data-n="c.points.length" x-effect="replayDraw($el, chartRev)">
                                         <div class="chart-head">
                                             <h3 class="chart-title" x-text="c.title"></h3>
                                             <span class="chart-range">Normal <span x-text="c.rangeTxt"></span></span>
@@ -417,7 +487,7 @@
                                                     <div class="y-tick" :style="{ top: t.top + '%' }" x-text="t.label"></div>
                                                 </template>
                                             </div>
-                                            <div class="plot" :style="{ height: c.h + 'px' }" @mouseleave="hover = null" x-effect="replayDraw($el, chartRev)">
+                                            <div class="plot" :style="{ height: c.h + 'px' }" @mouseleave="hover = null">
                                                 <template x-for="t in c.ticks" :key="t.v">
                                                     <div class="gridline" aria-hidden="true" :style="{ top: t.top + '%' }"></div>
                                                 </template>
@@ -433,10 +503,10 @@
                                                     <polyline class="chart-line" :points="c.line" fill="none" style="stroke: var(--accent)" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
                                                 </svg>
                                                 <template x-for="p in c.points" :key="p.id">
-                                                    <div class="pt-label" aria-hidden="true" :class="p.lv" :style="{ left: p.left + '%', top: p.top + '%', '--i': p.i }" x-text="p.label"></div>
+                                                    <div class="pt-label" aria-hidden="true" :class="[p.lv, { minor: p.minor }]" :style="{ left: p.left + '%', top: p.top + '%', '--x': p.left }" x-text="p.label"></div>
                                                 </template>
                                                 <template x-for="p in c.points" :key="p.id">
-                                                    <button type="button" class="pt" :aria-label="p.aria" :style="{ left: p.left + '%', top: p.top + '%', '--i': p.i }"
+                                                    <button type="button" class="pt" :aria-label="p.aria" :style="{ left: p.left + '%', top: p.top + '%', '--x': p.left }"
                                                             @mouseenter="hover = p.id" @focus="hover = p.id" @blur="hover = null">
                                                         <span x-show="p.lv === 'bad'" class="pt-diamond"></span>
                                                         <span x-show="p.lv !== 'bad'" class="pt-dot" :class="{ warn: p.lv === 'warn' }"></span>
@@ -455,7 +525,7 @@
                                             <div class="x-gutter"></div>
                                             <div class="x-axis">
                                                 <template x-for="x in c.xlabels" :key="x.no">
-                                                    <div class="x-label" :style="{ left: x.left + '%' }" x-text="x.label"></div>
+                                                    <div class="x-label" :style="{ left: x.left + '%', '--x': x.left }"><span class="x-long" x-text="x.label"></span><span class="x-short" aria-hidden="true" x-text="x.short"></span></div>
                                                 </template>
                                             </div>
                                         </div>
@@ -512,7 +582,7 @@
                                 <div class="stat-label">Eligibility / Pass rate</div>
                                 <div class="stat-bar">
                                     <span class="stat-num" style="margin: 0"><span x-text="pct"></span>%</span>
-                                    <span class="bar bar-grow" x-effect="replayDraw($el, chartRev)" role="img" :aria-label="'Pass rate ' + pct + ' percent'"><span :style="{ width: pct + '%' }"></span></span>
+                                    <span class="bar bar-grow" data-x0="0" data-x1="96" data-n="6" x-effect="replayDraw($el, chartRev)" role="img" :aria-label="'Pass rate ' + pct + ' percent'"><span :style="{ width: pct + '%' }"></span></span>
                                 </div>
                             </div>
                         </div>
@@ -558,7 +628,19 @@
                                 </template>
                                 </tbody>
                             </table>
-                            <template x-if="rows.length === 0">
+                            <template x-if="total === 0">
+                                <div class="empty">
+                                    <div class="empty-title">No trials recorded yet</div>
+                                    <div class="empty-text" x-text="activeTrial ? 'Trials appear here once the device sends readings for “' + activeTrial.name + '” and you sync.' : 'Start a trial from the Dashboard; each reading the device sends becomes a row here.'"></div>
+                                    <template x-if="!activeTrial">
+                                        <button type="button" class="btn-outline sm btn" @click="openTrialPrompt()">Start a trial</button>
+                                    </template>
+                                    <template x-if="activeTrial">
+                                        <button type="button" class="btn-outline sm btn" :class="{ 'is-loading': sync === 'loading' }" @click="doSync()" :disabled="syncDisabled" :aria-busy="(sync === 'loading').toString()" x-text="sync === 'loading' ? 'Syncing…' : 'Sync now'">Sync now</button>
+                                    </template>
+                                </div>
+                            </template>
+                            <template x-if="total > 0 && rows.length === 0">
                                 <div class="empty">
                                     <div class="empty-title">No matching trials</div>
                                     <div class="empty-text">Try another keyword or change the status filter.</div>
@@ -606,6 +688,7 @@
                                         <th scope="col" class="num">Avg. Turbidity (NTU)</th>
                                         <th scope="col" class="num">Avg. Temperature (°C)</th>
                                         <th scope="col">Status</th>
+                                        <th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>
                                     </tr>
                                     </thead>
                                     <tbody>
@@ -617,17 +700,23 @@
                                                 <span> → <span x-text="t.ended_at"></span></span>
                                             </td>
                                             <td class="num"><strong x-text="t.jumlah_percobaan"></strong></td>
-                                            <td class="num"><span class="cell" :class="trialAvgClass('ph', t)" x-text="fmtAvg(t.rata_rata.ph, 1)"></span></td>
-                                            <td class="num"><span class="cell" :class="trialAvgClass('tds', t)" x-text="fmtAvg(t.rata_rata.tds, 0)"></span></td>
-                                            <td class="num"><span class="cell" :class="trialAvgClass('kekeruhan', t)" x-text="fmtAvg(t.rata_rata.kekeruhan, 1)"></span></td>
-                                            <td class="num"><span class="cell" :class="trialAvgClass('suhu', t)" x-text="fmtAvg(t.rata_rata.suhu, 1)"></span></td>
+                                            <td class="num"><span class="cell" :class="trialAvgClass('ph', t)" x-text="avgTxt(t, 'ph', 1)"></span></td>
+                                            <td class="num"><span class="cell" :class="trialAvgClass('tds', t)" x-text="avgTxt(t, 'tds', 0)"></span></td>
+                                            <td class="num"><span class="cell" :class="trialAvgClass('kekeruhan', t)" x-text="avgTxt(t, 'kekeruhan', 1)"></span></td>
+                                            <td class="num"><span class="cell" :class="trialAvgClass('suhu', t)" x-text="avgTxt(t, 'suhu', 1)"></span></td>
                                             <td>
-                                                <template x-if="trialStatusBaik(t)">
+                                                <template x-if="trialStatus(t) === 'good'">
                                                     <span class="tag tag-ok lg"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>Good</span>
                                                 </template>
-                                                <template x-if="!trialStatusBaik(t)">
+                                                <template x-if="trialStatus(t) === 'poor'">
                                                     <span class="tag tag-bad lg"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M12 6v8"/><path d="M12 18h.01"/></svg>Poor</span>
                                                 </template>
+                                                <template x-if="trialStatus(t) === 'none'">
+                                                    <span class="tag tag-muted lg">No readings</span>
+                                                </template>
+                                            </td>
+                                            <td class="col-actions">
+                                                <button type="button" class="btn-delete btn" @click.stop="askDeleteTrial(t)" :aria-label="'Delete trial ' + t.name"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>
                                             </td>
                                         </tr>
                                     </template>
@@ -718,6 +807,28 @@
         </div>
     </template>
 
+    {{-- ============ DELETE TRIAL CONFIRMATION ============ --}}
+    <template x-if="trialToDelete">
+        <div class="overlay overlay-top" @click.self="cancelDeleteTrial()" @keydown.escape.stop="cancelDeleteTrial()">
+            <div class="dialog dialog-confirm" role="alertdialog" aria-modal="true" aria-labelledby="judul-hapus" aria-describedby="teks-hapus" tabindex="-1">
+                <div class="confirm-body">
+                    <span class="confirm-icon" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></span>
+                    <h2 id="judul-hapus" class="dialog-title">Delete “<span x-text="trialToDelete.name"></span>”?</h2>
+                    <p id="teks-hapus" class="confirm-text" x-text="trialToDelete.jumlah_percobaan > 0
+                        ? 'This permanently removes the trial and its ' + trialToDelete.jumlah_percobaan + (trialToDelete.jumlah_percobaan === 1 ? ' reading' : ' readings') + ' from Evaluation. This cannot be undone.'
+                        : 'This permanently removes the trial from Evaluation. This cannot be undone.'"></p>
+                </div>
+                <div class="dialog-foot">
+                    <button type="button" id="btn-batal-hapus" class="btn-outline btn" @click="cancelDeleteTrial()" :disabled="deletingTrial">Cancel</button>
+                    <button type="button" class="btn-danger solid btn" :class="{ 'is-loading': deletingTrial }" @click="confirmDeleteTrial()" :disabled="deletingTrial" :aria-busy="deletingTrial.toString()">
+                        <svg x-show="deletingTrial" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
+                        <span x-text="deletingTrial ? 'Deleting…' : 'Delete trial'">Delete trial</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
     {{-- ============ TRIAL DETAIL DIALOG ============ --}}
     <template x-if="trialDetail">
         <div class="overlay" @click.self="trialDetail = null">
@@ -728,11 +839,14 @@
                         <h2 class="dialog-title" x-text="trialDetail.name"></h2>
                     </div>
                     <div class="dialog-head-right">
-                        <template x-if="trialStatusBaik(trialDetail)">
+                        <template x-if="trialStatus(trialDetail) === 'good'">
                             <span class="tag tag-ok xl">GOOD</span>
                         </template>
-                        <template x-if="!trialStatusBaik(trialDetail)">
+                        <template x-if="trialStatus(trialDetail) === 'poor'">
                             <span class="tag tag-bad xl">POOR</span>
+                        </template>
+                        <template x-if="trialStatus(trialDetail) === 'none'">
+                            <span class="tag tag-muted xl">NO READINGS</span>
                         </template>
                         <button type="button" class="btn-close btn" aria-label="Close" @click="trialDetail = null"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
                     </div>
@@ -741,20 +855,20 @@
                     <div class="detail-eval-label">Average Results</div>
                     <div class="detail-grid" style="padding: 12px 0">
                         <div class="detail-item" :class="{ bad: trialAvgClass('ph', trialDetail) === 'bad' }">
-                            <div class="detail-item-head"><span class="detail-name">pH</span><span class="detail-status" :class="trialAvgClass('ph', trialDetail)" x-text="trialAvgClass('ph', trialDetail) === 'bad' ? 'Out of range' : 'Normal'"></span></div>
-                            <div class="detail-val" x-text="fmtAvg(trialDetail.rata_rata.ph, 1)"></div>
+                            <div class="detail-item-head"><span class="detail-name">pH</span><span class="detail-status" :class="trialAvgClass('ph', trialDetail)" x-text="avgStatus('ph', trialDetail)"></span></div>
+                            <div class="detail-val" x-text="avgTxt(trialDetail, 'ph', 1)"></div>
                         </div>
                         <div class="detail-item" :class="{ bad: trialAvgClass('tds', trialDetail) === 'bad' }">
-                            <div class="detail-item-head"><span class="detail-name">TDS</span><span class="detail-status" :class="trialAvgClass('tds', trialDetail)" x-text="trialAvgClass('tds', trialDetail) === 'bad' ? 'Out of range' : 'Normal'"></span></div>
-                            <div class="detail-val"><span x-text="fmtAvg(trialDetail.rata_rata.tds, 0)"></span> ppm</div>
+                            <div class="detail-item-head"><span class="detail-name">TDS</span><span class="detail-status" :class="trialAvgClass('tds', trialDetail)" x-text="avgStatus('tds', trialDetail)"></span></div>
+                            <div class="detail-val"><span x-text="avgTxt(trialDetail, 'tds', 0)"></span> ppm</div>
                         </div>
                         <div class="detail-item" :class="{ bad: trialAvgClass('kekeruhan', trialDetail) === 'bad' }">
-                            <div class="detail-item-head"><span class="detail-name">Turbidity</span><span class="detail-status" :class="trialAvgClass('kekeruhan', trialDetail)" x-text="trialAvgClass('kekeruhan', trialDetail) === 'bad' ? 'Out of range' : 'Normal'"></span></div>
-                            <div class="detail-val"><span x-text="fmtAvg(trialDetail.rata_rata.kekeruhan, 1)"></span> NTU</div>
+                            <div class="detail-item-head"><span class="detail-name">Turbidity</span><span class="detail-status" :class="trialAvgClass('kekeruhan', trialDetail)" x-text="avgStatus('kekeruhan', trialDetail)"></span></div>
+                            <div class="detail-val"><span x-text="avgTxt(trialDetail, 'kekeruhan', 1)"></span> NTU</div>
                         </div>
                         <div class="detail-item" :class="{ bad: trialAvgClass('suhu', trialDetail) === 'bad' }">
-                            <div class="detail-item-head"><span class="detail-name">Temperature</span><span class="detail-status" :class="trialAvgClass('suhu', trialDetail)" x-text="trialAvgClass('suhu', trialDetail) === 'bad' ? 'Out of range' : 'Normal'"></span></div>
-                            <div class="detail-val"><span x-text="fmtAvg(trialDetail.rata_rata.suhu, 1)"></span> °C</div>
+                            <div class="detail-item-head"><span class="detail-name">Temperature</span><span class="detail-status" :class="trialAvgClass('suhu', trialDetail)" x-text="avgStatus('suhu', trialDetail)"></span></div>
+                            <div class="detail-val"><span x-text="avgTxt(trialDetail, 'suhu', 1)"></span> °C</div>
                         </div>
                     </div>
                 </div>
@@ -805,7 +919,7 @@
                     </div>
                 </template>
                 <div class="dialog-foot">
-                    <div></div>
+                    <button type="button" class="btn-danger btn" @click="askDeleteTrial(trialDetail)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg><span>Delete trial</span></button>
                     <button type="button" class="btn-primary sm btn" @click="trialDetail = null">Close</button>
                 </div>
             </div>

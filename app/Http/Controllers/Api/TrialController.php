@@ -7,6 +7,8 @@ use App\Models\Perangkat;
 use App\Models\Trial;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class TrialController extends Controller
 {
@@ -64,17 +66,43 @@ class TrialController extends Controller
     /** Daftar semua trial yang sudah selesai (untuk halaman evaluasi). */
     public function history(): JsonResponse
     {
+        return response()->json(['trials' => $this->historiSelesai(Perangkat::utama())]);
+    }
+
+    /**
+     * Menghapus satu trial yang sudah selesai dari Evaluasi, beserta semua percobaannya.
+     * Trial yang masih aktif tidak bisa dihapus (akhiri dulu lewat "End This Trial").
+     */
+    public function destroy(Trial $trial): JsonResponse
+    {
         $perangkat = Perangkat::utama();
 
-        $trials = Trial::where('perangkat_id', $perangkat->id)
+        if ($trial->perangkat_id !== $perangkat->id) {
+            return response()->json(['message' => 'Trial not found.'], 404);
+        }
+
+        if ($trial->is_active) {
+            return response()->json(['message' => 'End this trial before deleting it.'], 409);
+        }
+
+        DB::transaction(function () use ($trial): void {
+            $trial->percobaan()->delete();
+            $trial->delete();
+        });
+
+        return response()->json(['trials' => $this->historiSelesai($perangkat)]);
+    }
+
+    /** @return Collection<int, array<string, mixed>> */
+    private function historiSelesai(Perangkat $perangkat): Collection
+    {
+        return Trial::where('perangkat_id', $perangkat->id)
             ->where('is_active', false)
             ->orderByDesc('ended_at')
             ->with('percobaan')
             ->get()
             ->map->untukDashboard()
             ->values();
-
-        return response()->json(['trials' => $trials]);
     }
 
     /** Cek apakah ada trial aktif. */
