@@ -111,10 +111,6 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 @keyframes riseDown { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
 @keyframes riseSide { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
 @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-@keyframes wipe { from { clip-path: inset(-14px 100% -14px -14px); } to { clip-path: inset(-14px -14px -14px -14px); } }
-@keyframes ptIn { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: none; } }
-@keyframes labelIn { from { opacity: 0; transform: translate(-50%, -22px); } to { opacity: 1; transform: translate(-50%, -32px); } }
-@keyframes barGrow { from { transform: scaleX(0); } to { transform: none; } }
 @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 @keyframes ripple { from { opacity: .32; transform: scale(0); } to { opacity: 0; transform: scale(1); } }
 @keyframes livePulse { 0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); } 70% { box-shadow: 0 0 0 7px rgba(52, 211, 153, 0); } 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); } }
@@ -209,7 +205,7 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     background: var(--action-inverse); color: var(--action-inverse-fg);
     font-size: calc(0.85 * var(--u, 16px)); font-weight: 500; white-space: nowrap;
     box-shadow: 0 1px 2px rgba(0, 0, 0, .05);
-    transition: background-color var(--duration-fast) var(--ease-entrance), transform .18s var(--ease-entrance), box-shadow .2s var(--ease-entrance);
+    transition: background-color var(--duration-fast) var(--ease-entrance), color .3s var(--ease-entrance), transform .18s var(--ease-entrance), box-shadow .2s var(--ease-entrance);
 }
 .pill:hover { background: rgba(255, 255, 255, 0.85); transform: translateY(-1px); box-shadow: 0 8px 26px rgba(76, 195, 255, 0.28); }
 .pill:active { transform: scale(.97); }
@@ -222,16 +218,8 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     display: flex; flex-direction: column; align-items: center;
     width: 100%; max-width: calc(22 * var(--u));
 }
-.intro-badge {
-    margin: 0;
-    display: inline-flex; align-items: center; gap: calc(0.5 * var(--u));
-    border-radius: 9999px; border: 1px solid var(--glass-border); background: var(--glass-fill);
-    padding: calc(0.4 * var(--u)) calc(0.875 * var(--u));
-    font-size: calc(0.72 * var(--u)); color: var(--body-muted);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-}
 .intro-title {
-    margin: calc(1.25 * var(--u)) 0 0;
+    margin: 0;
     max-width: calc(20 * var(--u));
     font-size: calc(2 * var(--u)); font-weight: 500; line-height: 1.1; letter-spacing: -0.02em;
     color: var(--heading); text-align: center;
@@ -261,8 +249,7 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     .intro-links { display: flex; }
     .pill { height: calc(2.75 * var(--u, 16px)); padding: 0 calc(1.375 * var(--u, 16px)); font-size: calc(0.95 * var(--u, 16px)); }
     .intro-col { max-width: calc(40 * var(--u)); }
-    .intro-badge { font-size: calc(0.8 * var(--u)); }
-    .intro-title { margin-top: calc(1.75 * var(--u)); max-width: calc(34 * var(--u)); font-size: calc(3.5 * var(--u)); }
+    .intro-title { max-width: calc(34 * var(--u)); font-size: calc(3.5 * var(--u)); }
     .intro-sub { margin-top: calc(1.25 * var(--u)); max-width: calc(34 * var(--u)); font-size: calc(1.1 * var(--u)); }
     .intro-cta { margin-top: calc(2.5 * var(--u)); }
     .pill.pill-lg { height: calc(3.75 * var(--u)); padding: 0 calc(2 * var(--u)); font-size: calc(1.05 * var(--u)); }
@@ -285,10 +272,11 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .app.is-in .content > .banner,
 .app.is-in .content > .no-data { animation: rise .7s var(--ease-entrance) .2s backwards; }
 .app.is-in .view > * { animation: rise .7s var(--ease-entrance) backwards; animation-delay: calc(.22s + var(--n, 0) * 80ms); }
-.view > :nth-child(2) { --n: 0; }
-.view > :nth-child(4) { --n: 1; }
-.view > :nth-child(6) { --n: 2; }
-.view > :nth-child(8) { --n: 3; }
+/* Stagger by role (template placeholders make child positions vary between states). */
+.view > .status, .view > .empty-state, .view > .eval { --n: 0; }
+.view > .kpis { --n: 1; }
+.view > .chart-card { --n: 2; }
+.view > .cta { --n: 3; }
 .app.is-in .kpis > .kpi { animation: rise .7s var(--ease-entrance) backwards; animation-delay: calc(.34s + var(--k, 0) * 60ms); }
 .kpis > :nth-child(2) { --k: 0; }
 .kpis > :nth-child(3) { --k: 1; }
@@ -364,6 +352,28 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .btn-soft:hover svg { transform: translateX(3px); }
 .btn-primary:hover:not(:disabled), .btn-outline:hover:not(:disabled), .btn-soft:hover, .btn-warn:hover:not(:disabled) { transform: translateY(-1px); }
 .btn:active:not(:disabled) { transform: scale(.97); }
+
+/* Flooding hover: when the cursor (or keyboard focus) reaches a button, blue water
+   with a moving wave crest rises from the bottom and fills it; it drains on leave. */
+.btn-primary::after, .btn-outline::after, .btn-soft::after, .btn-warn::after, .btn-retry::after, .btn-close::after, .pill::after {
+    content: ''; position: absolute; left: -12%; right: -12%; bottom: 0; height: 135%;
+    z-index: -2; pointer-events: none;
+    background:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 46 10'%3E%3Cpath d='M0 10V5Q11.5 0 23 5T46 5V10Z' fill='%236fd6ff'/%3E%3C/svg%3E") repeat-x 0 0 / 46px 10px,
+        linear-gradient(180deg, #6fd6ff 0%, #3aa2f4 45%, #1e6fd9 100%) no-repeat 0 9px / 100% 100%;
+    transform: translateY(101%);
+    transition: transform .7s var(--ease-entrance);
+    animation: floodWave 1.4s linear infinite paused;
+}
+.btn-primary:hover:not(:disabled)::after, .btn-outline:hover:not(:disabled)::after, .btn-soft:hover:not(:disabled)::after, .btn-warn:hover:not(:disabled)::after, .btn-retry:hover:not(:disabled)::after, .btn-close:hover:not(:disabled)::after, .pill:hover:not(:disabled)::after, .btn-primary:focus-visible::after, .btn-outline:focus-visible::after, .btn-soft:focus-visible::after, .btn-warn:focus-visible::after, .btn-retry:focus-visible::after, .btn-close:focus-visible::after, .pill:focus-visible::after {
+    transform: translateY(18%);
+    animation-play-state: running;
+}
+@keyframes floodWave { from { background-position: 0 0, 0 9px; } to { background-position: 46px 0, 0 9px; } }
+/* Light buttons switch to white text once they are under water. */
+.btn-primary:hover:not(:disabled), .btn-primary:focus-visible, .pill:hover, .pill:focus-visible,
+.btn-retry:hover:not(:disabled), .btn-warn:hover:not(:disabled), .btn-soft:hover { color: #ffffff; }
+.btn-primary:hover:not(:disabled), .pill:hover { box-shadow: 0 10px 30px rgba(58, 162, 244, 0.42); }
 .link-btn {
     min-height: 32px; padding: 0 4px; border: 0; background: transparent;
     font-size: 13px; font-weight: 600; color: var(--accent); cursor: pointer;
@@ -432,7 +442,7 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .dot-ok { background: var(--ok); }
 .dot-bad { background: var(--bad); }
-.chip-online .dot-ok, .intro-badge .dot-ok { animation: livePulse 2.2s ease-out infinite; }
+.chip-online .dot-ok { animation: livePulse 2.2s ease-out infinite; }
 .dot-ring { width: 9px; height: 9px; border-radius: 50%; border: 2px solid #8A91A0; }
 .diamond { width: 8px; height: 8px; background: var(--bad); transform: rotate(45deg); flex: 0 0 auto; }
 .notif { position: relative; }
@@ -688,6 +698,7 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
 }
 .tag-ok { background: var(--ok-bg); color: var(--ok-text); }
+.tag-muted { background: rgba(255, 255, 255, 0.06); color: var(--muted); }
 .tag-bad { background: var(--bad-bg); color: var(--bad-text); }
 .tag.lg { gap: 6px; padding: 5px 12px; font-weight: 700; }
 .tag.xl { gap: 6px; padding: 6px 12px; font-size: 14px; font-weight: 700; }
@@ -699,8 +710,6 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .spark svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .spark-line { filter: drop-shadow(0 0 4px rgba(76, 195, 255, 0.5)); }
 .spark-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
-.spark.draw > svg { animation: wipe .9s var(--ease-out-cubic) .2s backwards; }
-.spark.draw .spark-dot { animation: ptIn .4s var(--ease-entrance) .95s backwards; }
 
 /* Grafik */
 .chart-card { padding: 24px 28px 18px; }
@@ -746,7 +755,18 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .lg-diamond { width: 9px; height: 9px; background: var(--bad); transform: rotate(45deg); }
 .charts { display: grid; gap: 8px 28px; grid-template-columns: repeat(1, minmax(0, 1fr)); }
 .charts.all { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
-.chart { padding-top: 18px; }
+.chart { padding-top: 18px; container: chart / inline-size; }
+/* Narrow charts (phones, 2×2 on small screens): short T01 labels and every other
+   value label, counted back from the latest trial; out-of-range values stay visible. */
+.x-short { display: none; }
+@container chart (max-width: 620px) {
+    .x-long { display: none; }
+    .x-short { display: inline; }
+}
+@container chart (max-width: 440px) {
+    .pt-label { font-size: 11px; }
+    .pt-label.minor { display: none; }
+}
 .chart-head {
     display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline;
     gap: 4px 12px; margin: 0 0 22px 52px;
@@ -767,14 +787,21 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transition: opacity .3s ease-out; }
 .chart-line { filter: drop-shadow(0 0 6px rgba(76, 195, 255, 0.55)); }
-/* Scroll-triggered drawing: "armed" holds the chart at its start point until the
-   IntersectionObserver sees it, then "draw" plays earliest (left) → latest (right). */
-.plot.is-armed > svg, .spark.is-armed > svg { clip-path: inset(-14px 100% -14px -14px); }
-.plot.is-armed .pt, .plot.is-armed .pt-label, .plot.is-armed .band, .spark.is-armed .spark-dot { opacity: 0; }
-.plot.draw > svg { animation: wipe 1.05s var(--ease-out-cubic) backwards; }
-.plot.draw .band { animation: fadeIn .6s ease-out backwards; }
-.plot.draw .pt { animation: ptIn .5s var(--ease-entrance) backwards; animation-delay: calc(.15s + var(--i, 0) * 70ms); }
-.plot.draw .pt-label { animation: labelIn .45s var(--ease-out-cubic) backwards; animation-delay: calc(.28s + var(--i, 0) * 70ms); }
+/* Progressive drawing (scroll-triggered). JS moves --rx — a position in % of the
+   plot width — from the earliest trial point to the latest. The line and area are
+   clipped at --rx, and every point, value label and x-axis label fades and grows
+   in exactly as the line reaches its --x, so the chart draws trial by trial. */
+.chart.is-armed .plot > svg, .spark.is-armed > svg {
+    clip-path: inset(-14px calc(100% - var(--rx, 100) * 1%) -14px -14px);
+}
+.chart.is-armed .pt, .chart.is-armed .pt-label, .chart.is-armed .x-label, .spark.is-armed .spark-dot {
+    --on: clamp(0, (var(--rx, 100) - var(--x, 0)) / 5 + 0.4, 1);
+    opacity: var(--on);
+}
+.chart.is-armed .pt, .spark.is-armed .spark-dot { transform: scale(calc(0.35 + 0.65 * var(--on))); }
+.chart.is-armed .pt-label { transform: translate(-50%, calc(-32px + (1 - var(--on)) * 10px)); }
+.chart.is-armed .x-label { transform: translate(-50%, calc((1 - var(--on)) * 6px)); }
+.chart.is-armed .band { opacity: clamp(0, (var(--rx, 100) + 6) / 30, 1); }
 .chart-card.is-syncing .plot > svg { opacity: .5; }
 .chart-card.is-syncing .plot::after {
     content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: 8px;
@@ -862,6 +889,7 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .stat-num { font-size: 26px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--heading); }
 .stat-bar { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
 .bar { flex: 1 1 auto; height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.bar-grow.is-armed span { transform: scaleX(clamp(0, var(--rx, 100) / 100, 1)); }
 .bar span {
     display: block; height: 100%; border-radius: 999px;
     background: linear-gradient(90deg, var(--accent-deep), var(--accent));
@@ -869,8 +897,6 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     transform-origin: left center;
     transition: width .8s var(--ease-entrance);
 }
-.bar-grow.is-armed span { transform: scaleX(0); }
-.bar-grow.draw span { animation: barGrow 1s var(--ease-entrance) .15s backwards; }
 .search-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: var(--text-2); }
 .search-note .link-btn { font-size: 14px; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 14px; }
@@ -911,7 +937,44 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .key { font-weight: 700; padding: 2px 6px; border-radius: 5px; }
 .key.bad { color: var(--bad-text); background: var(--bad-bg); }
 .key.warn { color: var(--warn-text); background: var(--warn-bg); }
-.no-data { padding: 40px 28px; text-align: center; }
+/* Empty states: the dashboard keeps its full shape when there is no data yet. */
+.empty-state { padding: 26px 28px; display: flex; flex-wrap: wrap; align-items: center; gap: 18px 28px; position: relative; overflow: hidden; }
+.empty-state::before {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(60% 120% at 0% 50%, rgba(76, 195, 255, 0.10), transparent 60%);
+}
+.empty-state-icon {
+    position: relative; width: 72px; height: 72px; border-radius: 22px; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft); color: var(--accent); box-shadow: inset 0 0 0 1px rgba(76, 195, 255, 0.25);
+}
+.empty-state-icon::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 26px;
+    border: 1px solid rgba(76, 195, 255, 0.35); opacity: 0;
+    animation: emptyRipple 2.6s var(--ease-out-cubic) infinite;
+}
+@keyframes emptyRipple { 0% { opacity: .7; transform: scale(.92); } 100% { opacity: 0; transform: scale(1.18); } }
+.empty-state-body { position: relative; flex: 1 1 340px; min-width: 0; }
+.empty-state-title { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; color: var(--heading); }
+.empty-state-text { margin: 6px 0 0; font-size: 15px; line-height: 1.5; color: var(--muted); max-width: 62ch; }
+.empty-state-actions { position: relative; display: flex; flex-wrap: wrap; gap: 10px; }
+.kpi.is-empty .kpi-num { color: var(--muted); }
+.kpi.is-empty .tile { opacity: .7; }
+.kpi.is-empty .kpi-delta { font-size: 13px; color: var(--muted); }
+.spark-empty { width: 88px; height: 30px; flex: 0 0 auto; border-bottom: 1px dashed rgba(255, 255, 255, 0.2); }
+.chart-empty-plot {
+    position: relative; margin-top: 18px; height: 240px; border-radius: 16px;
+    border: 1px dashed var(--input-line); overflow: hidden;
+    background: repeating-linear-gradient(to bottom, transparent 0 47px, rgba(255, 255, 255, 0.05) 47px 48px);
+    display: flex; align-items: center; justify-content: center;
+}
+.chart-empty-wave { position: absolute; left: 4%; right: 4%; width: 92%; top: 50%; height: 60px; transform: translateY(-50%); color: rgba(76, 195, 255, 0.35); }
+.chart-empty-text {
+    position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center;
+    padding: 14px 20px; border-radius: 14px; background: var(--panel-strong); border: 1px solid var(--line);
+    font-size: 14px; color: var(--muted);
+}
+.chart-empty-text strong { font-size: 15px; font-weight: 600; color: var(--heading); }
 
 /* ---------- Toast ---------- */
 .toasts { position: fixed; top: 84px; right: 24px; z-index: 60; width: 370px; max-width: calc(100% - 48px); }
@@ -992,6 +1055,36 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .dialog-foot .pager { display: flex; gap: 8px; }
 .dialog-foot .btn-outline { padding: 0 14px; }
 
+/* Deleting a completed trial from Evaluation */
+.col-actions { width: 56px; text-align: right; }
+.btn-delete {
+    width: 38px; height: 38px; border: 1px solid transparent; border-radius: 999px;
+    background: transparent; color: var(--muted); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+}
+.btn-delete:hover, .btn-delete:focus-visible { color: var(--bad-text); background: var(--bad-bg); border-color: rgba(255, 92, 99, 0.35); }
+.btn-danger {
+    display: inline-flex; align-items: center; gap: 8px;
+    min-height: 44px; padding: 0 18px; border-radius: 999px; cursor: pointer;
+    border: 1px solid rgba(255, 92, 99, 0.45); background: rgba(255, 92, 99, 0.08); color: var(--bad-text);
+    font-size: 14px; font-weight: 600;
+}
+.btn-danger:hover:not(:disabled) { background: rgba(255, 92, 99, 0.16); border-color: rgba(255, 92, 99, 0.7); color: #ffd1d3; }
+.btn-danger.solid { background: #d8323a; border-color: #d8323a; color: #ffffff; }
+.btn-danger.solid:hover:not(:disabled) { background: #e8454d; border-color: #e8454d; color: #ffffff; }
+.btn-danger:disabled { opacity: .6; cursor: progress; }
+.overlay-top { z-index: 80; }
+.dialog-confirm { width: 440px; }
+.confirm-body { padding: 26px 26px 6px; text-align: center; }
+.confirm-icon {
+    margin: 0 auto 14px; width: 60px; height: 60px; border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bad-bg); color: var(--bad-strong); box-shadow: inset 0 0 0 1px rgba(255, 92, 99, 0.3);
+}
+.confirm-body .dialog-title { font-size: 20px; overflow-wrap: anywhere; }
+.confirm-text { margin: 8px 0 0; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.dialog-confirm .dialog-foot { justify-content: flex-end; }
+
 @media (max-width: 560px) {
     .topbar { padding: 12px 16px; position: relative; }
     .brand { width: auto; }
@@ -1013,11 +1106,9 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     .lm-reveal, .intro-title .w, .intro-sub .w { transform: none !important; filter: none !important; transition-duration: 300ms !important; transition-delay: 0ms !important; }
     .app.is-in .topbar, .app.is-in .sidebar, .app.is-in .page-head, .app.is-in .view > *, .app.is-in .kpis > .kpi,
     .app.is-in .content > .banner, .app.is-in .content > .no-data, .table tbody tr { animation: fadeIn .3s ease-out backwards; animation-delay: 0ms; }
-    .plot.draw > svg, .spark.draw > svg, .plot.draw .pt, .plot.draw .pt-label, .spark.draw .spark-dot, .bar-grow.draw span { animation: none; }
-    .plot.is-armed > svg, .spark.is-armed > svg { clip-path: none; }
-    .plot.is-armed .pt, .plot.is-armed .pt-label, .plot.is-armed .band, .spark.is-armed .spark-dot { opacity: 1; }
-    .bar-grow.is-armed span { transform: none; }
-    .btn.is-loading::before, .pill.is-loading::before, .kpis.is-syncing .kpi::after, .chart-card.is-syncing .plot::after, .chip-online .dot-ok, .intro-badge .dot-ok { animation: none; }
+    .chart.is-armed, .spark.is-armed, .bar-grow.is-armed { --rx: 200 !important; }
+    .btn.is-loading::before, .pill.is-loading::before, .kpis.is-syncing .kpi::after, .chart-card.is-syncing .plot::after, .chip-online .dot-ok, .empty-state-icon::after { animation: none; }
     .kpi:hover, .btn-primary:hover:not(:disabled), .btn-outline:hover:not(:disabled), .btn-soft:hover, .btn-warn:hover:not(:disabled), .pill:hover { transform: none; }
     .pt, .pt-label, .x-label, .band { transition: none; }
+    .btn-primary::after, .btn-outline::after, .btn-soft::after, .btn-warn::after, .btn-retry::after, .btn-close::after, .pill::after { animation: none; transition-duration: .15s; }
 }

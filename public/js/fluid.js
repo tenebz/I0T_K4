@@ -75,6 +75,11 @@ function fluidSimulation(canvas) {
     const POINTER_INK = 0.5;  // real mouse / touch stirring
     const AMBIENT_INK = 1.3;  // light streams that keep water running across the screen
     const AMBIENT_EVERY = 60; // frames between ambient streams (~1 s at 60 fps)
+    const SPLASH_INK = 0.9;    // cursor-touches-button splash
+    const SPLASH_DROPS = 6;
+    const SPLASH_SPEED = 260;
+    const EXPLODE_RAYS = 18;   // radial blast from the "Go to Dashboard" button
+    const EXPLODE_SPEED = 1100;
 
     function getWebGLContext(canvas) {
         const params = { alpha: true, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false };
@@ -338,18 +343,26 @@ function fluidSimulation(canvas) {
             float sparkle = pow(clamp(dot(n, halfway), 0.0, 1.0), 120.0);
             float rim = pow(clamp(1.0 - n.z, 0.0, 1.0), 1.5);
 
-            // Shallow water takes the dye hue (hue-preserving tone map, never
-            // white); everything else is deep water, so there is no hard edge.
+            // Clear water: the body is mostly see-through with only a faint aqua
+            // tint (dye hue pulled toward clear water), so its shape is carried
+            // by light — sparkles on ripples, a bright meniscus along the
+            // waterline and a light-catching rim — like water on dark glass.
             float peak = max(C.r, max(C.g, C.b));
             vec3 hue = C / max(peak, 0.0001);
-            vec3 shallow = hue * (1.0 - exp(-peak * 1.45));
-            vec3 deep = vec3(0.010, 0.024, 0.058);
+            vec3 clearTint = vec3(0.50, 0.82, 1.0);
+            vec3 waterHue = mix(hue, clearTint, 0.5);
+            float fill = 1.0 - exp(-peak * 1.45);
+            vec3 shallow = waterHue * fill * 0.17;
+            vec3 deep = vec3(0.010, 0.022, 0.050);
             float cover = smoothstep(0.035, 0.22, h);
 
             vec3 col = mix(deep, shallow * diffuse, cover);
             float relief = smoothstep(0.01, 0.12, h);
-            col += vec3(0.76, 0.92, 1.0) * sparkle * 0.6 * relief;
-            col += shallow * rim * 0.16;
+            // Meniscus: a thin bright band right where the water begins.
+            float meniscus = smoothstep(0.035, 0.10, h) * (1.0 - smoothstep(0.10, 0.26, h));
+            col += clearTint * meniscus * 0.30;
+            col += vec3(0.88, 0.97, 1.0) * sparkle * 1.15 * relief;
+            col += clearTint * rim * 0.26 * relief;
 
             float a = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
             gl_FragColor = vec4(col, a);
@@ -1250,6 +1263,45 @@ function fluidSimulation(canvas) {
             if (destroyed) return;
             multipleSplats(Math.max(1, Math.round(amount || 8)), strength);
         },
+        // Small splash of water around a screen point (e.g. the cursor touching a button).
+        splash(clientX, clientY, strength) {
+            if (destroyed) return;
+            const { x, y } = pointerPos(clientX, clientY);
+            const k = (strength === undefined ? SPLASH_INK : strength) * Math.max(ink, 0.4);
+            for (let i = 0; i < SPLASH_DROPS; i++) {
+                const angle = (i / SPLASH_DROPS) * Math.PI * 2 + Math.random() * 0.6;
+                const c = generateColor();
+                splat(
+                    x + Math.cos(angle) * 8,
+                    y + Math.sin(angle) * 8,
+                    Math.cos(angle) * SPLASH_SPEED,
+                    Math.sin(angle) * SPLASH_SPEED,
+                    { r: c.r * k, g: c.g * k, b: c.b * k }
+                );
+            }
+        },
+        // The full opening burst again (34 splats + 8 follow-up waves), plus a
+        // radial blast of water from the given screen point when one is passed.
+        explode(clientX, clientY) {
+            if (destroyed) return;
+            multipleSplats(34);
+            for (let i = 0; i < 8; i++)
+                splatStack.push(10 + parseInt(Math.random() * 10));
+            if (clientX === undefined || clientY === undefined)
+                return;
+            const { x, y } = pointerPos(clientX, clientY);
+            for (let i = 0; i < EXPLODE_RAYS; i++) {
+                const angle = (i / EXPLODE_RAYS) * Math.PI * 2 + Math.random() * 0.25;
+                const c = generateColor();
+                splat(
+                    x + Math.cos(angle) * 14,
+                    y + Math.sin(angle) * 14,
+                    Math.cos(angle) * EXPLODE_SPEED,
+                    Math.sin(angle) * EXPLODE_SPEED,
+                    { r: c.r * BURST_INK, g: c.g * BURST_INK, b: c.b * BURST_INK }
+                );
+            }
+        },
         setInk(value) {
             inkTarget = Math.max(0, Number(value) || 0);
         },
@@ -1259,22 +1311,22 @@ function fluidSimulation(canvas) {
     };
 
     function generateColor() {
-        // Layered water palette: deep navy → medium blue → soft cyan/aqua.
+        // Clear-water palette: lightly tinted navy → blue → near-clear aqua (low saturation).
         // Deeper layers are darker and more frequent; aqua highlights are rarer,
         // paler and brighter, like light caught in moving water.
         const layer = Math.random();
         let h, s, v;
         if (layer < 0.42) {
             h = 0.62 + Math.random() * 0.04;  // deep navy (≈ 223–238°)
-            s = 0.82 + Math.random() * 0.14;
+            s = 0.50 + Math.random() * 0.14;
             v = 0.46 + Math.random() * 0.16;
         } else if (layer < 0.78) {
             h = 0.56 + Math.random() * 0.05;  // medium blue (≈ 202–220°)
-            s = 0.70 + Math.random() * 0.18;
+            s = 0.38 + Math.random() * 0.16;
             v = 0.62 + Math.random() * 0.18;
         } else {
             h = 0.50 + Math.random() * 0.04;  // soft cyan / aqua (≈ 180–194°)
-            s = 0.58 + Math.random() * 0.2;
+            s = 0.22 + Math.random() * 0.16;
             v = 0.72 + Math.random() * 0.14;
         }
         let c = HSVtoRGB(h, s, v);

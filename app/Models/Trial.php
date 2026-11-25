@@ -31,14 +31,19 @@ class Trial extends Model
 
     /**
      * Hitung rata-rata sensor dari semua percobaan dalam trial ini.
+     * Null bila trial belum punya percobaan (tidak ada yang bisa dirata-rata).
      *
-     * @return array{ph: float, tds: float, kekeruhan: float, suhu: float}
+     * @return array{ph: float, tds: float, kekeruhan: float, suhu: float}|null
      */
-    public function rataRata(): array
+    public function rataRata(): ?array
     {
         $avg = $this->percobaan()
             ->selectRaw('AVG(ph) as ph, AVG(tds) as tds, AVG(kekeruhan) as kekeruhan, AVG(suhu) as suhu')
             ->first();
+
+        if ($avg === null || $avg->ph === null) {
+            return null;
+        }
 
         return [
             'ph' => round((float) $avg->ph, 2),
