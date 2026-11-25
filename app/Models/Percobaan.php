@@ -34,7 +34,7 @@ class Percobaan extends Model
 
     public function untukDashboard(): array
     {
-        $waktu = $this->diukur_pada->copy()->setTimezone(config('kualitas_air.zona_waktu'))->locale('id');
+        $waktu = $this->diukur_pada->copy()->setTimezone(config('kualitas_air.zona_waktu'))->locale('en');
 
         return [
             'no' => $this->nomor,

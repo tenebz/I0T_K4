@@ -1,13 +1,13 @@
 /*
- * Latar fluida WebGL (Liquid Motion) untuk Dashboard Kualitas Air.
- * Mesin: WebGL fluid simulation oleh Pavel Dobryakov (MIT), disetel untuk tampilan
- * "tinta di dalam air" di atas dasar gelap #04050c, dengan palet biru tua → sian.
+ * WebGL fluid background (Liquid Motion) for the AquaSense water quality dashboard.
+ * Engine: WebGL fluid simulation by Pavel Dobryakov (MIT), tuned for a smooth,
+ * flowing-water look over the #04050c base with a navy → blue → aqua palette.
  *
- * API global (window.fluid):
- *   burst(jumlah, kekuatan)  semburan tinta di titik acak (mis. saat sinkron berhasil)
- *   setInk(faktor)           kecerahan tinta auto-cursor & pointer (1 = layar pembuka)
- *   setTempo(faktor)         kecepatan orbit auto-cursor (mis. dipercepat saat memuat)
- *   destroy()                hentikan simulasi
+ * Global API (window.fluid):
+ *   burst(amount, strength)  splash of dye at random points (e.g. after a successful sync)
+ *   setInk(factor)           auto-cursor & pointer dye brightness (1 = opening screen)
+ *   setTempo(factor)         auto-cursor orbit speed (e.g. faster while syncing)
+ *   destroy()                stop the simulation
  */
 (function () {
     'use strict';
@@ -17,14 +17,14 @@ function fluidSimulation(canvas) {
     canvas.height = canvas.clientHeight;
 
     let config = {
-        SIM_RESOLUTION: 200,
-        DYE_RESOLUTION: 512,
-        DENSITY_DISSIPATION: 0.958, // trails fade so idle swirls stay dynamic, not saturated
-        VELOCITY_DISSIPATION: 0.96,
+        SIM_RESOLUTION: 248,        // higher sim grid: smoother, less jagged flow
+        DYE_RESOLUTION: 1024,       // crisp dye edges (768 on mobile, see below)
+        DENSITY_DISSIPATION: 0.982, // long, soft trails that blend like water
+        VELOCITY_DISSIPATION: 0.982, // momentum carries gently instead of snapping
         PRESSURE_DISSIPATION: 0.8,
         PRESSURE_ITERATIONS: 20,
-        CURL: 42,                   // extra swirl for the marbled look
-        SPLAT_RADIUS: 0.22,         // fatter ink blobs
+        CURL: 18,                   // calm vorticity: flowing water, not marbled ink
+        SPLAT_RADIUS: 0.38,         // broad, soft splats
         SHADING: true,
         COLORFUL: true,
         PAUSED: false,
@@ -62,6 +62,17 @@ function fluidSimulation(canvas) {
         config.SHADING = false;
         config.BLOOM = false;
     }
+    // Keep GPU load reasonable on phones and small screens.
+    if (isMobile() || Math.min(window.screen.width, window.screen.height) < 700) {
+        config.SIM_RESOLUTION = 200;
+        config.DYE_RESOLUTION = 768;
+    }
+
+    // Ink multipliers, tempered for the long-lived (0.982) dye so colours layer
+    // softly instead of clipping to white.
+    const BURST_INK = 2.2;    // load burst & queued waves (multipleSplats)
+    const VIRTUAL_INK = 0.7;  // auto-cursor orbit (driveVirtualPointer)
+    const POINTER_INK = 0.5;  // real mouse / touch stirring
 
     function getWebGLContext(canvas) {
         const params = { alpha: true, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false };
@@ -293,11 +304,11 @@ function fluidSimulation(canvas) {
             vec3 T = texture2D(uTexture, vT).rgb;
             vec3 B = texture2D(uTexture, vB).rgb;
             vec3 C = texture2D(uTexture, vUv).rgb;
-            float dx = length(R) - length(L);
-            float dy = length(T) - length(B);
+            float dx = (length(R) - length(L)) * 0.35;
+            float dy = (length(T) - length(B)) * 0.35;
             vec3 n = normalize(vec3(dx, dy, length(texelSize)));
             vec3 l = vec3(0.0, 0.0, 1.0);
-            float diffuse = clamp(dot(n, l) + 0.7, 0.7, 1.0);
+            float diffuse = clamp(dot(n, l) + 0.85, 0.85, 1.0);
             C.rgb *= diffuse;
             float a = max(C.r, max(C.g, C.b));
             gl_FragColor = vec4(C, a);
@@ -323,11 +334,11 @@ function fluidSimulation(canvas) {
             vec3 T = texture2D(uTexture, vT).rgb;
             vec3 B = texture2D(uTexture, vB).rgb;
             vec3 C = texture2D(uTexture, vUv).rgb;
-            float dx = length(R) - length(L);
-            float dy = length(T) - length(B);
+            float dx = (length(R) - length(L)) * 0.35;
+            float dy = (length(T) - length(B)) * 0.35;
             vec3 n = normalize(vec3(dx, dy, length(texelSize)));
             vec3 l = vec3(0.0, 0.0, 1.0);
-            float diffuse = clamp(dot(n, l) + 0.7, 0.7, 1.0);
+            float diffuse = clamp(dot(n, l) + 0.85, 0.85, 1.0);
             C *= diffuse;
             vec3 bloom = texture2D(uBloom, vUv).rgb;
             vec3 noise = texture2D(uDithering, vUv * ditherScale).rgb;
@@ -774,14 +785,14 @@ function fluidSimulation(canvas) {
     let lastVColorTime = 0;
     const engineStart = Date.now();
     const ORBIT_RADIUS = 300;      // px — the auto-cursor circles the centre at this radius
-    const ORBIT_SPEED = 0.026;     // rad/frame (~4 s per loop)
+    const ORBIT_SPEED = 0.016;     // rad/frame (~6.5 s per loop, calm)
     const ORBIT_START_DELAY = 700; // ms after load before the auto-cursor begins (burst plays first)
 
     let rafHandle = 0;
     let destroyed = false;
 
-    // Kontrol dari halaman: kecerahan tinta & tempo orbit, dihaluskan per frame
-    // supaya peralihan layar pembuka → dashboard tidak terasa patah.
+    // Page controls: dye brightness & orbit tempo, eased per frame so the
+    // opening screen → dashboard hand-off never feels abrupt.
     const prefersReducedMotion = (() => {
         try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
     })();
@@ -794,8 +805,8 @@ function fluidSimulation(canvas) {
 
     function update() {
         if (destroyed) return;
-        // Kanvas berukuran 0 (jendela/panel tersembunyi) membuat rasio aspek 0/0 = NaN
-        // yang meracuni semua tekstur secara permanen; lewati frame sampai ukurannya pulih.
+    // A 0-sized canvas (hidden window/pane) gives a 0/0 = NaN aspect ratio that
+    // permanently poisons every texture; skip frames until the size recovers.
         if (canvas.clientWidth < 2 || canvas.clientHeight < 2) {
             rafHandle = requestAnimationFrame(update);
             return;
@@ -832,13 +843,13 @@ function fluidSimulation(canvas) {
         }
         if (!virtualColor || Date.now() - lastVColorTime > 120) {
             virtualColor = generateColor();
-            virtualColor.r *= 3.2;
-            virtualColor.g *= 3.2;
-            virtualColor.b *= 3.2;
+            virtualColor.r *= VIRTUAL_INK;
+            virtualColor.g *= VIRTUAL_INK;
+            virtualColor.b *= VIRTUAL_INK;
             lastVColorTime = Date.now();
         }
-        const dx = (x - vPrevX) * 9.0;
-        const dy = (y - vPrevY) * 9.0;
+        const dx = (x - vPrevX) * 4.5;
+        const dy = (y - vPrevY) * 4.5;
         vPrevX = x;
         vPrevY = y;
         splat(x, y, dx, dy, {
@@ -855,7 +866,7 @@ function fluidSimulation(canvas) {
         for (let i = 0; i < pointers.length; i++) {
             const p = pointers[i];
             if (p.moved) {
-                const k = Math.min(1, 0.35 + ink * 0.65);
+                const k = POINTER_INK * Math.min(1, 0.35 + ink * 0.65);
                 const c = p.color.r === undefined ? generateColor() : p.color;
                 splat(p.x, p.y, p.dx, p.dy, { r: c.r * k, g: c.g * k, b: c.b * k });
                 p.moved = false;
@@ -1067,7 +1078,7 @@ function fluidSimulation(canvas) {
     }
 
     function multipleSplats(amount, strength) {
-        const k = strength === undefined ? 10.0 : strength;
+        const k = strength === undefined ? BURST_INK : strength;
         for (let i = 0; i < amount; i++) {
             const color = generateColor();
             color.r *= k;
@@ -1115,8 +1126,8 @@ function fluidSimulation(canvas) {
         }
         p.down = true;
         p.moved = true;
-        p.dx = (x - p.x) * 5.0;
-        p.dy = (y - p.y) * 5.0;
+        p.dx = (x - p.x) * 3.0;
+        p.dy = (y - p.y) * 3.0;
         p.x = x;
         p.y = y;
         p.color = generateColor();
@@ -1132,8 +1143,8 @@ function fluidSimulation(canvas) {
             p.down = true;
             p.moved = p.everMoved === true;
             p.everMoved = true;
-            p.dx = (x - p.x) * 8.0;
-            p.dy = (y - p.y) * 8.0;
+            p.dx = (x - p.x) * 4.5;
+            p.dy = (y - p.y) * 4.5;
             p.x = x;
             p.y = y;
         }
@@ -1185,14 +1196,24 @@ function fluidSimulation(canvas) {
     };
 
     function generateColor() {
-        // Palet air: biru tua (hue ≈ 0.66) → biru muda → sian (hue 0.50).
-        // Rona yang lebih dalam dibuat sedikit lebih gelap, sian lebih terang,
-        // sesekali kilau sian pucat seperti pantulan cahaya di air.
-        const depth = Math.random();
-        const h = 0.5 + depth * 0.165;
-        const glint = Math.random() < 0.12;
-        const s = glint ? 0.38 : 0.72 + Math.random() * 0.24;
-        const v = 1.0 - depth * 0.42;
+        // Layered water palette: deep navy → medium blue → soft cyan/aqua.
+        // Deeper layers are darker and more frequent; aqua highlights are rarer,
+        // paler and brighter, like light caught in moving water.
+        const layer = Math.random();
+        let h, s, v;
+        if (layer < 0.42) {
+            h = 0.62 + Math.random() * 0.04;  // deep navy (≈ 223–238°)
+            s = 0.82 + Math.random() * 0.14;
+            v = 0.38 + Math.random() * 0.17;
+        } else if (layer < 0.78) {
+            h = 0.56 + Math.random() * 0.05;  // medium blue (≈ 202–220°)
+            s = 0.70 + Math.random() * 0.18;
+            v = 0.62 + Math.random() * 0.18;
+        } else {
+            h = 0.50 + Math.random() * 0.04;  // soft cyan / aqua (≈ 180–194°)
+            s = 0.42 + Math.random() * 0.22;
+            v = 0.72 + Math.random() * 0.14;
+        }
         let c = HSVtoRGB(h, s, v);
         c.r *= 0.92;
         c.g *= 0.92;

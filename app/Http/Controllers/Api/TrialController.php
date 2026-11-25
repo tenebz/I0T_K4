@@ -47,7 +47,7 @@ class TrialController extends Controller
             ->first();
 
         if (! $trial) {
-            return response()->json(['message' => 'Tidak ada trial yang sedang aktif.'], 404);
+            return response()->json(['message' => 'There is no active trial.'], 404);
         }
 
         $trial->update([

@@ -1,4 +1,4 @@
-/* Dashboard Monitoring Kualitas Air — Liquid Motion (latar fluida WebGL + panel kaca gelap) */
+/* AquaSense — water quality dashboard. Liquid Motion: WebGL fluid background + dark glass panels */
 :root {
     /* Liquid Motion */
     --hero-base: #04050c;
@@ -326,7 +326,8 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     animation: ripple .6s var(--ease-out-cubic);
 }
 .pill .ripple { background: rgba(76, 195, 255, 0.55); }
-.btn.is-loading::before {
+.pill.is-loading { cursor: progress; }
+.btn.is-loading::before, .pill.is-loading::before {
     content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
     background: linear-gradient(100deg, transparent 25%, rgba(76, 195, 255, 0.38) 50%, transparent 75%);
     background-size: 220% 100%;
@@ -350,6 +351,10 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 .btn-sync .chev.open { transform: rotate(180deg); }
 .btn-sync .sync-icon { transition: transform .4s var(--ease-entrance); }
 .btn-sync:hover:not(:disabled) .sync-icon:not(.spin) { transform: rotate(-60deg); }
+.btn-refresh .refresh-icon { transition: transform .4s var(--ease-entrance); }
+.btn-refresh:hover:not(:disabled) .refresh-icon:not(.spin) { transform: rotate(-60deg); }
+.btn-outline[aria-busy="true"] { cursor: progress; opacity: 1; }
+.seg:active:not(:disabled) { transform: scale(.95); }
 
 .btn-outline {
     min-height: 44px; padding: 0 18px;
@@ -764,6 +769,10 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 }
 .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transition: opacity .3s ease-out; }
 .chart-line { filter: drop-shadow(0 0 6px rgba(76, 195, 255, 0.55)); }
+/* Scroll-triggered drawing: "armed" holds the chart at its start point until the
+   IntersectionObserver sees it, then "draw" plays earliest (left) → latest (right). */
+.plot.is-armed > svg, .spark.is-armed > svg { clip-path: inset(-14px 100% -14px -14px); }
+.plot.is-armed .pt, .plot.is-armed .pt-label, .plot.is-armed .band, .spark.is-armed .spark-dot { opacity: 0; }
 .plot.draw > svg { animation: wipe 1.05s var(--ease-out-cubic) backwards; }
 .plot.draw .band { animation: fadeIn .6s ease-out backwards; }
 .plot.draw .pt { animation: ptIn .5s var(--ease-entrance) backwards; animation-delay: calc(.15s + var(--i, 0) * 70ms); }
@@ -862,7 +871,8 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     transform-origin: left center;
     transition: width .8s var(--ease-entrance);
 }
-.bar-grow span { animation: barGrow 1s var(--ease-entrance) .3s backwards; }
+.bar-grow.is-armed span { transform: scaleX(0); }
+.bar-grow.draw span { animation: barGrow 1s var(--ease-entrance) .15s backwards; }
 .search-note { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: var(--text-2); }
 .search-note .link-btn { font-size: 14px; }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 14px; }
@@ -1005,8 +1015,11 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     .lm-reveal, .intro-title .w, .intro-sub .w { transform: none !important; filter: none !important; transition-duration: 300ms !important; transition-delay: 0ms !important; }
     .app.is-in .topbar, .app.is-in .sidebar, .app.is-in .page-head, .app.is-in .view > *, .app.is-in .kpis > .kpi,
     .app.is-in .content > .banner, .app.is-in .content > .no-data, .table tbody tr { animation: fadeIn .3s ease-out backwards; animation-delay: 0ms; }
-    .plot.draw > svg, .spark.draw > svg, .plot.draw .pt, .plot.draw .pt-label, .spark.draw .spark-dot, .bar-grow span { animation: none; }
-    .btn.is-loading::before, .kpis.is-syncing .kpi::after, .chart-card.is-syncing .plot::after, .chip-online .dot-ok, .intro-badge .dot-ok { animation: none; }
+    .plot.draw > svg, .spark.draw > svg, .plot.draw .pt, .plot.draw .pt-label, .spark.draw .spark-dot, .bar-grow.draw span { animation: none; }
+    .plot.is-armed > svg, .spark.is-armed > svg { clip-path: none; }
+    .plot.is-armed .pt, .plot.is-armed .pt-label, .plot.is-armed .band, .spark.is-armed .spark-dot { opacity: 1; }
+    .bar-grow.is-armed span { transform: none; }
+    .btn.is-loading::before, .pill.is-loading::before, .kpis.is-syncing .kpi::after, .chart-card.is-syncing .plot::after, .chip-online .dot-ok, .intro-badge .dot-ok { animation: none; }
     .kpi:hover, .btn-primary:hover:not(:disabled), .btn-outline:hover:not(:disabled), .btn-soft:hover, .btn-warn:hover:not(:disabled), .pill:hover { transform: none; }
     .pt, .pt-label, .x-label, .band { transition: none; }
 }

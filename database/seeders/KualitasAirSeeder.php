@@ -17,7 +17,7 @@ class KualitasAirSeeder extends Seeder
         $perangkat = Perangkat::updateOrCreate(
             ['nama' => 'Perangkat Air A'],
             [
-                'sampel' => 'Air A',
+                'sampel' => 'Water A',
                 'menyala' => true,
                 'terakhir_online' => Carbon::now($zona)->utc(),
                 'terakhir_sinkron' => Carbon::now($zona)->utc(),

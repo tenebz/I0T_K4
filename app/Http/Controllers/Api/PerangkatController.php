@@ -15,11 +15,11 @@ class PerangkatController extends Controller
         $perangkat = Perangkat::utama();
 
         if (! $perangkat->isOnline()) {
-            return $this->tolak($perangkat, 'Perangkat sedang offline. Pastikan perangkat IoT menyala dan terhubung ke Wi-Fi.');
+            return $this->tolak($perangkat, 'The device is offline. Make sure the IoT device is powered on and connected to Wi-Fi.');
         }
 
         if (! $perangkat->menyala) {
-            return $this->tolak($perangkat, 'Alat sedang mati. Nyalakan alat dulu, lalu sinkronkan.');
+            return $this->tolak($perangkat, 'The device is turned off. Turn it on first, then sync.');
         }
 
         $perangkat->forceFill(['terakhir_sinkron' => now()])->save();
@@ -34,7 +34,7 @@ class PerangkatController extends Controller
         $perangkat = Perangkat::utama();
 
         if (! $perangkat->isOnline()) {
-            return $this->tolak($perangkat, 'Alat tidak merespons. Periksa koneksi alat, lalu coba lagi.');
+            return $this->tolak($perangkat, 'The device is not responding. Check its connection, then try again.');
         }
 
         $perangkat->update(['menyala' => $data['menyala']]);
