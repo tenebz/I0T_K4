@@ -27,6 +27,13 @@ php artisan serve
 
 Buka <http://localhost:8000>.
 
+Seeder menyiapkan satu perangkat online dan 13 pembacaan dalam rentang 13 hari.
+Data mencakup kondisi normal, mendekati batas, dan di luar batas untuk setiap
+sensor, sehingga grafik, evaluasi baik/buruk, detail percobaan, dan notifikasi
+bisa langsung dicoba. Percobaan terakhir sengaja memuat nilai di luar batas.
+Jalankan `php artisan db:seed` lagi untuk memperbarui data contoh; pembacaan
+lain yang sudah tersimpan tidak dihapus.
+
 ## API untuk alat IoT
 
 | Metode | Endpoint | Isi | Fungsi |

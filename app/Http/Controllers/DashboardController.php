@@ -14,6 +14,10 @@ class DashboardController extends Controller
             'url' => [
                 'sinkron' => route('api.sinkron'),
                 'daya' => route('api.daya'),
+                'trial_start' => route('api.trial.start'),
+                'trial_end' => route('api.trial.end'),
+                'trial_status' => route('api.trial.status'),
+                'trial_history' => route('api.trial.history'),
             ],
         ];
 

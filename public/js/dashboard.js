@@ -17,6 +17,21 @@
     const GRAFIK_MAKS = 10; // jumlah percobaan terakhir yang digambar di grafik
     const JEDA_MIN = 600;   // spinner minimal terlihat sebentar walau server cepat
 
+    // Layar pembuka & latar fluida (lihat public/js/fluid.js).
+    const KUNCI_INTRO = 'kualitas-air:intro-dilihat';
+    const TINTA_INTRO = 1;       // tinta penuh di layar pembuka
+    const TINTA_DASHBOARD = 0.42; // tinta diredam agar angka & grafik tetap terbaca
+    const JEDA_MASUK = 480;      // ms: konten pembuka memudar sebelum dashboard muncul
+    const JEDA_INTRO_HILANG = 1100;
+    const DURASI_HITUNG = 900;   // ms: animasi hitung angka KPI
+
+    const fluid = (method, ...args) => {
+        if (window.fluid && typeof window.fluid[method] === 'function') window.fluid[method](...args);
+    };
+    const introSudahDilihat = () => {
+        try { return window.sessionStorage.getItem(KUNCI_INTRO) === '1'; } catch (e) { return false; }
+    };
+
     const fmt = (v, dec) => Number(v).toFixed(dec).replace('.', ',');
     const pad2 = (n) => (n < 10 ? '0' + n : String(n));
     const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -82,14 +97,21 @@
         return { bad, warn, baik: bad.length === 0, text };
     }
 
-    async function kirim(url, body) {
+    // Cek apakah rata-rata sensor trial semuanya dalam batas
+    function trialAvgBaik(SENSORS, rataRata) {
+        if (!rataRata) return true;
+        return SENSORS.every((s) => level(s, rataRata[s.key]) !== 'bad');
+    }
+
+    async function kirim(url, body, method) {
         let res;
         try {
-            res = await fetch(url, {
-                method: 'POST',
+            const opts = {
+                method: method || 'POST',
                 headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-                body: JSON.stringify(body || {}),
-            });
+            };
+            if (method !== 'GET') opts.body = JSON.stringify(body || {});
+            res = await fetch(url, opts);
         } catch (e) {
             const err = new Error('Server tidak merespons. Periksa jaringan, lalu coba lagi.');
             err.data = null;
@@ -107,6 +129,7 @@
 
     function buatDashboard(awal) {
         const SENSORS = buatSensor(awal.sensor);
+        const lewatiIntro = introSudahDilihat();
         const nilai = (t) => evalTrial(SENSORS, t);
         // Disimpan di luar state reaktif: elemen DOM & timer tidak boleh di-proxy Alpine.
         let toastTimer = null;
@@ -115,15 +138,16 @@
 
         const NAV = [
             { id: 'ringkasan', label: 'Dashboard', icon: 'dash', view: 'dashboard', target: null },
-            { id: 'sensor', label: 'Data Sensor', icon: 'sensor', view: 'dashboard', target: 'sensor' },
-            { id: 'riwayat', label: 'Riwayat', icon: 'chart', view: 'dashboard', target: 'riwayat' },
+            { id: 'riwayat', label: 'Riwayat', icon: 'chart', view: 'riwayat', target: null },
             { id: 'evaluasi', label: 'Evaluasi', icon: 'table', view: 'evaluasi', target: null },
         ];
 
         return {
-            trials: awal.percobaan,
+            trials: awal.percobaan || [],
             device: awal.perangkat,
             urls: awal.url,
+            activeTrial: awal.active_trial || null,
+            completedTrials: awal.completed_trials || [],
             sensorList: SENSORS.map((s) => ({ key: s.key, nama: s.nama })),
             sync: 'idle',
             toast: null,
@@ -131,6 +155,7 @@
             sensorKey: SENSORS[0].key,
             hover: null,
             detail: null,
+            trialDetail: null,
             sidebarOpen: true,
             nav: 'ringkasan',
             notifOpen: false,
@@ -141,10 +166,80 @@
             switched: false,
             filter: 'semua',
             power: awal.perangkat.menyala ? 'on' : 'off',
+            syncDropdownOpen: false,
+            historyLoading: false,
+            newTrialStarted: false,
+
+            // Trial input modal
+            showInputDetected: !awal.active_trial,
+            trialNameInput: '',
+            trialNameError: '',
+            trialStarting: false,
+
+            // Layar pembuka & motion
+            entered: lewatiIntro,
+            introGone: lewatiIntro,
+            introLeaving: false,
+            introReady: false,
+            chartRev: 0,
+
+            init() {
+                fluid('setInk', lewatiIntro ? TINTA_DASHBOARD : TINTA_INTRO);
+                // Dua frame: pastikan keadaan awal (opacity 0) sudah dilukis sebelum reveal.
+                requestAnimationFrame(() => requestAnimationFrame(() => { this.introReady = true; }));
+            },
 
             destroy() {
                 clearTimeout(toastTimer);
                 uiTimers.forEach(clearTimeout);
+            },
+
+            /* ---------- Layar pembuka ---------- */
+            get introBadge() {
+                return (this.online ? 'Perangkat online' : 'Perangkat offline') + ' · ' + this.total + ' percobaan tercatat';
+            },
+            splitWords(el, baseDelay, stagger) {
+                const words = el.textContent.trim().split(/\s+/);
+                el.textContent = '';
+                words.forEach((word, i) => {
+                    const span = document.createElement('span');
+                    span.className = 'w';
+                    span.style.setProperty('--wd', (baseDelay + i * stagger) + 'ms');
+                    span.style.setProperty('--i', String(i));
+                    span.textContent = word;
+                    el.appendChild(span);
+                    if (i < words.length - 1) el.appendChild(document.createTextNode(' '));
+                });
+            },
+            enterDashboard(view, navId) {
+                if (this.entered || this.introLeaving) return;
+                const rm = reduceMotion();
+                this.introLeaving = true;
+                try { window.sessionStorage.setItem(KUNCI_INTRO, '1'); } catch (e) { /* mode privat */ }
+                fluid('burst', 14, 4);
+                fluid('setInk', TINTA_DASHBOARD);
+                if (view && view !== this.view) {
+                    this.view = view;
+                    this.nav = navId;
+                }
+                uiTimers.push(setTimeout(() => {
+                    this.entered = true;
+                    this.chartRev++;
+                    this.$nextTick(() => {
+                        const h = document.getElementById('judul-view');
+                        if (h) h.focus({ preventScroll: true });
+                    });
+                }, rm ? 0 : JEDA_MASUK));
+                uiTimers.push(setTimeout(() => { this.introGone = true; }, rm ? 0 : JEDA_INTRO_HILANG));
+            },
+
+            /* ---------- Motion grafik ---------- */
+            // Memutar ulang animasi "menggambar" pada grafik/sparkline (dipicu chartRev).
+            replayDraw(el, rev) {
+                if (!this.entered || rev < 0) return;
+                el.classList.remove('draw');
+                void el.offsetWidth;
+                el.classList.add('draw');
             },
 
             /* ---------- Data dasar ---------- */
@@ -156,6 +251,11 @@
             get online() { return !!this.device.online; },
             get lastSync() { return this.device.terakhir_sinkron || '—'; },
             get curNoPad() { return this.cur ? pad2(this.cur.no) : ''; },
+            get sampleLabel() {
+                if (!this.activeTrial || !this.activeTrial.name) return this.device.sampel;
+                const n = this.activeTrial.name.trim();
+                return n.toLowerCase().startsWith('air ') ? n : 'Air ' + n;
+            },
 
             /* ---------- Perangkat & daya ---------- */
             get powerBusy() { return this.power === 'turning-on' || this.power === 'turning-off'; },
@@ -275,7 +375,7 @@
                 };
             },
 
-            /* ---------- Tabel evaluasi ---------- */
+            /* ---------- Tabel riwayat ---------- */
             get allRows() {
                 return this.trials.map((t) => {
                     const e = nilai(t);
@@ -314,6 +414,94 @@
                 return SENSORS.map((s) => ({ key: s.key, label: s.nama + (s.satuan ? ' (' + s.satuan + ')' : '') }));
             },
 
+            /* ---------- Trial helpers ---------- */
+            fmtAvg(v, dec) { return fmt(v, dec); },
+            trialAvgClass(key, trial) {
+                if (!trial.rata_rata) return '';
+                const s = SENSORS.find((x) => x.key === key);
+                if (!s) return '';
+                return level(s, trial.rata_rata[key]);
+            },
+            trialStatusBaik(trial) {
+                return trialAvgBaik(SENSORS, trial.rata_rata);
+            },
+            openTrialDetail(trial) {
+                this.trialDetail = trial;
+            },
+            trialPercobaanRows(trial) {
+                if (!trial || !trial.percobaan) return [];
+                return trial.percobaan.map((t) => {
+                    const e = nilai(t);
+                    const cell = (s) => {
+                        const v = t[s.key];
+                        const lv = level(s, v);
+                        return { txt: fmt(v, s.dec) + arrowFor(s, v, lv), cls: lv };
+                    };
+                    const cells = {};
+                    SENSORS.forEach((s) => { cells[s.key] = cell(s); });
+                    return {
+                        no: t.no, noPad: pad2(t.no), tanggal: t.tanggal, jam: t.jam + ' WIB',
+                        cells, baik: e.baik,
+                    };
+                });
+            },
+
+            /* ---------- Trial actions ---------- */
+            async submitTrialName() {
+                const name = (this.trialNameInput || '').trim();
+                if (!name) {
+                    this.trialNameError = 'Nama trial tidak boleh kosong.';
+                    return;
+                }
+                this.trialNameError = '';
+                this.trialStarting = true;
+                try {
+                    const json = await kirim(this.urls.trial_start, { name });
+                    this.activeTrial = json.trial;
+                    // Jangan reset trials — biarkan data lama tampil sampai sync berikutnya
+                    // supaya dashboard tidak kosong. Trials akan di-refresh saat doSync().
+                    this.terapkanPerangkat(json.perangkat);
+                    this.showInputDetected = false;
+                    this.trialNameInput = '';
+                    this.newTrialStarted = true; // flag: trial baru, data di dashboard adalah sisa trial lama
+                    this.showToast({ kind: 'success', title: 'Trial "' + name + '" dimulai', msg: 'Tekan Sinkronkan untuk mengambil data percobaan pertama.' }, 6000);
+                } catch (e) {
+                    this.trialNameError = e.message;
+                } finally {
+                    this.trialStarting = false;
+                }
+            },
+
+            async endTrial() {
+                if (!this.activeTrial) return;
+                this.closeToast();
+                try {
+                    const json = await kirim(this.urls.trial_end);
+                    // Tambahkan ke completed trials
+                    this.completedTrials.unshift(json.trial);
+                    this.showToast({ kind: 'success', title: 'Trial "' + json.trial.name + '" selesai', msg: 'Rata-rata telah dihitung dan disimpan di Evaluasi.' }, 5000);
+                    // Reset state aktif tapi PERTAHANKAN trials lama di UI supaya tidak blank
+                    this.activeTrial = null;
+                    this.newTrialStarted = false;
+                    // Tampilkan popup input nama trial baru
+                    this.showInputDetected = true;
+                } catch (e) {
+                    this.showToast({ kind: 'error', retry: 'sync', title: 'Gagal mengakhiri trial', msg: e.message });
+                }
+            },
+
+            async refreshHistory() {
+                this.historyLoading = true;
+                try {
+                    const json = await kirim(this.urls.trial_history, null, 'GET');
+                    this.completedTrials = json.trials;
+                } catch (e) {
+                    this.showToast({ kind: 'error', retry: 'sync', title: 'Gagal memuat histori', msg: e.message });
+                } finally {
+                    this.historyLoading = false;
+                }
+            },
+
             /* ---------- Notifikasi ---------- */
             get notifs() {
                 const list = [];
@@ -339,16 +527,20 @@
                 return NAV.map((nd) => ({
                     ...nd,
                     active: this.nav === nd.id,
-                    badge: nd.id === 'evaluasi' && this.burukCount > 0 ? this.burukCount : null,
+                    badge: nd.id === 'riwayat' && this.burukCount > 0 ? this.burukCount : null,
                 }));
             },
-            get isEval() { return this.view === 'evaluasi'; },
             get viewClass() { return this.leaving ? 'view-out' : (this.switched ? 'view-in' : ''); },
-            get viewTitle() { return this.isEval ? 'Evaluasi Percobaan' : 'Dashboard Monitoring Kualitas Air'; },
+            get viewTitle() {
+                if (this.view === 'riwayat') return 'Riwayat Percobaan';
+                if (this.view === 'evaluasi') return 'Evaluasi';
+                return 'Dashboard Monitoring Kualitas Air';
+            },
             get viewSub() {
-                if (this.isEval) return 'Hasil dan catatan otomatis untuk setiap percobaan ' + this.device.sampel + '.';
-                if (!this.cur) return 'Sampel ' + this.device.sampel + ' · belum ada percobaan';
-                return 'Sampel ' + this.device.sampel + ' · ' + this.total + ' percobaan · data terkini dari Percobaan ' + this.curNoPad;
+                if (this.view === 'riwayat') return 'Daftar dan catatan otomatis untuk setiap percobaan' + (this.activeTrial ? ' — ' + this.activeTrial.name : '') + '.';
+                if (this.view === 'evaluasi') return 'Histori semua trial air minum yang telah selesai.';
+                if (!this.cur) return 'Sampel ' + this.sampleLabel + ' · belum ada percobaan';
+                return 'Sampel ' + this.sampleLabel + ' · ' + this.total + ' percobaan · data terkini dari Percobaan ' + this.curNoPad;
             },
             scrollToTarget(target) {
                 const behavior = reduceMotion() ? 'auto' : 'smooth';
@@ -359,6 +551,7 @@
             go(view, navId, target, keepFocus) {
                 if (this.leaving) return;
                 this.notifOpen = false;
+                this.syncDropdownOpen = false;
                 if (view === this.view) {
                     this.nav = navId;
                     this.scrollToTarget(target);
@@ -383,7 +576,7 @@
             pickNav(n) { this.go(n.view, n.id, n.target); },
             onQuery(v) {
                 this.query = v;
-                if (v.trim() && this.view !== 'evaluasi') this.go('evaluasi', 'evaluasi', null, true);
+                if (v.trim() && this.view !== 'riwayat') this.go('riwayat', 'riwayat', null, true);
             },
             clearAll() { this.query = ''; this.filter = 'semua'; },
 
@@ -407,11 +600,16 @@
                 if (this.sync === 'loading' || this.power !== 'on') return;
                 this.sync = 'loading';
                 this.closeToast();
+                fluid('setTempo', 2.6);
                 try {
                     const [json] = await Promise.all([kirim(this.urls.sinkron), jeda(JEDA_MIN)]);
                     const sebelum = this.trials.length;
                     this.trials = json.percobaan;
+                    this.chartRev++;
+                    fluid('burst', 10, 3);
                     this.terapkanPerangkat(json.perangkat);
+                    if (json.active_trial) this.activeTrial = json.active_trial;
+                    this.newTrialStarted = false; // flag trial baru dibersihkan setelah sync
                     if (this.trials.length > sebelum) this.notifRead = false;
                     const baru = this.trials.length - sebelum;
                     this.showToast({
@@ -424,6 +622,7 @@
                     this.showToast({ kind: 'error', retry: 'sync', title: 'Sinkronisasi gagal', msg: e.message });
                 } finally {
                     this.sync = 'idle';
+                    fluid('setTempo', 1);
                 }
             },
             async togglePower() {
@@ -506,9 +705,80 @@
         };
     }
 
+    // x-countup="'7,2'": angka berhitung halus ke nilai baru (format desimal koma).
+    // null = belum tampil; hitungan berikutnya dimulai dari 0.
+    function daftarCountUp(Alpine) {
+        Alpine.directive('countup', (el, { expression }, { evaluateLater, effect, cleanup }) => {
+            const ambilNilai = evaluateLater(expression);
+            let raf = 0;
+            let shown = null;
+
+            const flash = () => {
+                el.classList.remove('is-updated');
+                void el.offsetWidth;
+                el.classList.add('is-updated');
+            };
+
+            effect(() => ambilNilai((txt) => {
+                cancelAnimationFrame(raf);
+                if (txt === null || txt === undefined) {
+                    el.textContent = '';
+                    shown = null;
+                    return;
+                }
+                const str = String(txt);
+                const target = parseFloat(str.replace(',', '.'));
+                const dec = (str.split(',')[1] || '').length;
+                if (!isFinite(target) || reduceMotion()) {
+                    el.textContent = str;
+                    shown = target;
+                    return;
+                }
+                const from = shown === null ? 0 : shown;
+                if (from === target) {
+                    el.textContent = str;
+                    return;
+                }
+                if (shown !== null) flash();
+                el.textContent = fmt(from, dec);
+                const t0 = performance.now();
+                const tick = (now) => {
+                    const p = Math.min(1, (now - t0) / DURASI_HITUNG);
+                    const eased = 1 - Math.pow(1 - p, 3);
+                    shown = from + (target - from) * eased;
+                    el.textContent = p < 1 ? fmt(shown, dec) : str;
+                    if (p < 1) raf = requestAnimationFrame(tick);
+                    else shown = target;
+                };
+                raf = requestAnimationFrame(tick);
+            }));
+            cleanup(() => cancelAnimationFrame(raf));
+        });
+    }
+
+    // Riak air kecil di titik tekan pada tombol (.btn / .pill).
+    function pasangRiakTombol() {
+        document.addEventListener('pointerdown', (e) => {
+            const btn = e.target.closest('.btn, .pill');
+            if (!btn || btn.disabled || reduceMotion()) return;
+            const r = btn.getBoundingClientRect();
+            const size = Math.max(r.width, r.height) * 2;
+            const ripple = document.createElement('span');
+            ripple.className = 'ripple';
+            ripple.setAttribute('aria-hidden', 'true');
+            ripple.style.width = ripple.style.height = size + 'px';
+            ripple.style.left = (e.clientX - r.left - size / 2) + 'px';
+            ripple.style.top = (e.clientY - r.top - size / 2) + 'px';
+            btn.appendChild(ripple);
+            ripple.addEventListener('animationend', () => ripple.remove());
+        }, { passive: true });
+    }
+
     document.addEventListener('alpine:init', () => {
         const el = document.getElementById('data-awal');
         const awal = JSON.parse(el.textContent);
+        daftarCountUp(window.Alpine);
         window.Alpine.data('dashboard', () => buatDashboard(awal));
+        pasangRiakTombol();
     });
 })();

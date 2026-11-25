@@ -9,7 +9,7 @@ class Percobaan extends Model
 {
     protected $table = 'percobaan';
 
-    protected $fillable = ['perangkat_id', 'nomor', 'diukur_pada', 'ph', 'tds', 'kekeruhan', 'suhu'];
+    protected $fillable = ['perangkat_id', 'trial_id', 'nomor', 'diukur_pada', 'ph', 'tds', 'kekeruhan', 'suhu'];
 
     protected function casts(): array
     {
@@ -27,6 +27,11 @@ class Percobaan extends Model
         return $this->belongsTo(Perangkat::class);
     }
 
+    public function trial(): BelongsTo
+    {
+        return $this->belongsTo(Trial::class);
+    }
+
     public function untukDashboard(): array
     {
         $waktu = $this->diukur_pada->copy()->setTimezone(config('kualitas_air.zona_waktu'))->locale('id');
@@ -39,6 +44,7 @@ class Percobaan extends Model
             'tds' => $this->tds,
             'kekeruhan' => $this->kekeruhan,
             'suhu' => $this->suhu,
+            'trial_id' => $this->trial_id,
         ];
     }
 }
