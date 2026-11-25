@@ -19,10 +19,21 @@ class DashboardLiquidMotionTest extends TestCase
         $response->assertSee('id="fluid-canvas"', false);
         $response->assertSee('js/fluid.js', false);
         $response->assertSee('AquaSense');
-        $response->assertSee('Smart Real Time Water Quality Sytem Dashboard');
+        $response->assertSee('Integrated Real Time Water Quality System');
+        $response->assertDontSee('Sytem');
+        $response->assertDontSee('sensors normal');
         $response->assertSee('Go to Dashboard');
         $response->assertSee('© 2026 AquaSense - Made with ❤️ by Erkham, faishal, Najwa, Ratri, Pebri, Sultan, Iim, Galih, Via');
         $response->assertSee('enterDashboard(\'riwayat\', \'riwayat\')', false);
+    }
+
+    public function test_dashboard_header_logo_links_back_to_the_opening_screen(): void
+    {
+        $response = $this->get(route('dashboard'));
+
+        $response->assertOk();
+        $response->assertSee('class="topbar-brand" @click.prevent="backToIntro()"', false);
+        $response->assertSee('aria-label="AquaSense — back to the opening screen"', false);
     }
 
     public function test_dashboard_keeps_every_view_and_control_in_english(): void
