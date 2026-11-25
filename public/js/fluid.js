@@ -18,13 +18,13 @@ function fluidSimulation(canvas) {
 
     let config = {
         SIM_RESOLUTION: 248,        // higher sim grid: smoother, less jagged flow
-        DYE_RESOLUTION: 1024,       // crisp dye edges (768 on mobile, see below)
-        DENSITY_DISSIPATION: 0.986, // liquid bodies persist and shrink, not fade like vapour
-        VELOCITY_DISSIPATION: 0.975, // a little viscous drag, like water slowing down
+        DYE_RESOLUTION: 640,        // soft enough that trails stay smooth water, not ink threads
+        DENSITY_DISSIPATION: 0.983, // water thins out as it travels instead of piling up like gel
+        VELOCITY_DISSIPATION: 0.992, // low viscosity: momentum keeps the water running
         PRESSURE_DISSIPATION: 0.8,
         PRESSURE_ITERATIONS: 20,
-        CURL: 8,                    // low vorticity: no smoky curls, smooth liquid flow
-        SPLAT_RADIUS: 0.46,         // broad pours of liquid
+        CURL: 10,                   // gentle eddies without shredding the water into wisps
+        SPLAT_RADIUS: 0.30,         // narrower pours read as streams, not blobs
         SHADING: true,
         COLORFUL: true,
         PAUSED: false,
@@ -65,16 +65,16 @@ function fluidSimulation(canvas) {
     // Keep GPU load reasonable on phones and small screens.
     if (isMobile() || Math.min(window.screen.width, window.screen.height) < 700) {
         config.SIM_RESOLUTION = 200;
-        config.DYE_RESOLUTION = 768;
+        config.DYE_RESOLUTION = 512;
     }
 
     // Ink multipliers, tempered for the long-lived (0.982) dye so colours layer
     // softly instead of clipping to white.
-    const BURST_INK = 2.2;    // load burst & queued waves (multipleSplats)
-    const VIRTUAL_INK = 0.7;  // auto-cursor orbit (driveVirtualPointer)
+    const BURST_INK = 2.0;    // load burst & queued waves (multipleSplats)
+    const VIRTUAL_INK = 0.8;  // auto-cursor orbit (driveVirtualPointer)
     const POINTER_INK = 0.5;  // real mouse / touch stirring
-    const AMBIENT_INK = 1.5;  // gentle pours that keep liquid arriving on screen
-    const AMBIENT_EVERY = 75; // frames between ambient pours (~1.25 s at 60 fps)
+    const AMBIENT_INK = 1.3;  // light streams that keep water running across the screen
+    const AMBIENT_EVERY = 60; // frames between ambient streams (~1 s at 60 fps)
 
     function getWebGLContext(canvas) {
         const params = { alpha: true, depth: false, stencil: false, antialias: false, preserveDrawingBuffer: false };
@@ -301,42 +301,55 @@ function fluidSimulation(canvas) {
         uniform sampler2D uTexture;
         uniform vec2 texelSize;
 
-        // Liquid surface: the dye is treated as the thickness of a body of water.
-        // Thickness → height field → surface normal, lit with a soft key light,
-        // a glossy specular glint and a thin fresnel rim, and clipped with a
-        // meniscus edge so faint wisps vanish instead of drifting like vapour.
+        // Water surface. The whole screen is one body of dark water and the dye
+        // is how much lit, shallow water sits on top of it. The dye is smoothed
+        // with a 3×3 tent filter before lighting, so fading trails become soft
+        // swells and ripples on the surface instead of thin ink filaments or
+        // vapour wisps over an empty black void.
         float thickness (vec3 c) {
-            return 1.0 - exp(-dot(c, vec3(0.30, 0.42, 0.28)) * 2.4);
+            return 1.0 - exp(-dot(c, vec3(0.30, 0.42, 0.28)) * 1.8);
         }
 
         void main () {
-            vec3 C = texture2D(uTexture, vUv).rgb;
-            float hC = thickness(C);
-            float hL = thickness(texture2D(uTexture, vL).rgb);
-            float hR = thickness(texture2D(uTexture, vR).rgb);
-            float hT = thickness(texture2D(uTexture, vT).rgb);
-            float hB = thickness(texture2D(uTexture, vB).rgb);
+            vec2 o = texelSize;
+            vec3 cC  = texture2D(uTexture, vUv).rgb;
+            vec3 cL  = texture2D(uTexture, vUv - vec2(o.x, 0.0)).rgb;
+            vec3 cR  = texture2D(uTexture, vUv + vec2(o.x, 0.0)).rgb;
+            vec3 cT  = texture2D(uTexture, vUv + vec2(0.0, o.y)).rgb;
+            vec3 cB  = texture2D(uTexture, vUv - vec2(0.0, o.y)).rgb;
+            vec3 cLT = texture2D(uTexture, vUv + vec2(-o.x,  o.y)).rgb;
+            vec3 cRT = texture2D(uTexture, vUv + vec2( o.x,  o.y)).rgb;
+            vec3 cLB = texture2D(uTexture, vUv + vec2(-o.x, -o.y)).rgb;
+            vec3 cRB = texture2D(uTexture, vUv + vec2( o.x, -o.y)).rgb;
 
-            vec3 n = normalize(vec3((hL - hR) * 6.5, (hB - hT) * 6.5, 1.0));
+            // Smoothed dye: rounded water, no hairline filaments.
+            vec3 C = (cC * 4.0 + (cL + cR + cT + cB) * 2.0 + (cLT + cRT + cLB + cRB)) / 16.0;
+            float h = thickness(C);
+
+            // Sobel gradient of the smoothed thickness → gentle wave normal.
+            float gx = thickness((cL * 2.0 + cLT + cLB) * 0.25) - thickness((cR * 2.0 + cRT + cRB) * 0.25);
+            float gy = thickness((cB * 2.0 + cLB + cRB) * 0.25) - thickness((cT * 2.0 + cLT + cRT) * 0.25);
+            vec3 n = normalize(vec3(gx * 3.2, gy * 3.2, 1.0));
+
             vec3 light = normalize(vec3(-0.38, 0.52, 0.76));
             vec3 halfway = normalize(light + vec3(0.0, 0.0, 1.0));
+            float diffuse = 0.82 + 0.18 * clamp(dot(n, light), 0.0, 1.0);
+            // Fine glints: sunlight sparkling on ripples.
+            float sparkle = pow(clamp(dot(n, halfway), 0.0, 1.0), 120.0);
+            float rim = pow(clamp(1.0 - n.z, 0.0, 1.0), 1.5);
 
-            float diffuse = 0.58 + 0.42 * clamp(dot(n, light), 0.0, 1.0);
-            float specular = pow(clamp(dot(n, halfway), 0.0, 1.0), 70.0);
-            float rim = pow(clamp(1.0 - n.z, 0.0, 1.0), 1.2);
-
-            // Meniscus: a defined edge where the liquid body begins.
-            float body = smoothstep(0.05, 0.17, hC);
-            // Thicker liquid reads deeper and more saturated; thin edges lighter.
-            float depth = smoothstep(0.15, 0.95, hC);
-
-            // Hue-preserving tone map: bright pools stay blue instead of washing to white.
+            // Shallow water takes the dye hue (hue-preserving tone map, never
+            // white); everything else is deep water, so there is no hard edge.
             float peak = max(C.r, max(C.g, C.b));
-            vec3 tone = C * ((1.0 - exp(-peak * 1.5)) / max(peak, 0.0001));
-            vec3 col = tone * diffuse * mix(1.08, 0.82, depth);
-            col += vec3(0.72, 0.90, 1.0) * specular * 0.85;
-            col += tone * rim * 0.45;
-            col *= body;
+            vec3 hue = C / max(peak, 0.0001);
+            vec3 shallow = hue * (1.0 - exp(-peak * 1.45));
+            vec3 deep = vec3(0.010, 0.024, 0.058);
+            float cover = smoothstep(0.035, 0.22, h);
+
+            vec3 col = mix(deep, shallow * diffuse, cover);
+            float relief = smoothstep(0.01, 0.12, h);
+            col += vec3(0.76, 0.92, 1.0) * sparkle * 0.6 * relief;
+            col += shallow * rim * 0.16;
 
             float a = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
             gl_FragColor = vec4(col, a);
@@ -878,8 +891,8 @@ function fluidSimulation(canvas) {
             virtualColor.b *= VIRTUAL_INK;
             lastVColorTime = Date.now();
         }
-        const dx = (x - vPrevX) * 4.5;
-        const dy = (y - vPrevY) * 4.5;
+        const dx = (x - vPrevX) * 6.5;
+        const dy = (y - vPrevY) * 6.5;
         vPrevX = x;
         vPrevY = y;
         splat(x, y, dx, dy, {
@@ -1016,8 +1029,8 @@ function fluidSimulation(canvas) {
         if (config.SHADING) {
             let program = config.BLOOM ? displayBloomShadingProgram : displayShadingProgram;
             program.bind();
-            // Sample neighbours 2.5 dye texels apart: smooth, glassy surface normals.
-            gl.uniform2f(program.uniforms.texelSize, 2.5 / dyeWidth, 2.5 / dyeHeight);
+            // Tent-filter footprint: 2 dye texels, smooths filaments into rounded water.
+            gl.uniform2f(program.uniforms.texelSize, 2.0 / dyeWidth, 2.0 / dyeHeight);
             gl.uniform1i(program.uniforms.uTexture, density.read.attach(0));
             if (config.BLOOM) {
                 gl.uniform1i(program.uniforms.uBloom, bloom.attach(1));
@@ -1117,7 +1130,7 @@ function fluidSimulation(canvas) {
         const color = generateColor();
         const k = AMBIENT_INK * ink;
         const angle = Math.random() * Math.PI * 2;
-        const speed = 120 + Math.random() * 160;
+        const speed = 380 + Math.random() * 320;
         splat(
             canvas.width * (0.12 + Math.random() * 0.76),
             canvas.height * (0.12 + Math.random() * 0.76),
