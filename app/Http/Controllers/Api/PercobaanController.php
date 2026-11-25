@@ -26,7 +26,7 @@ class PercobaanController extends Controller
         $perangkat->tandaiOnline();
 
         if (! $perangkat->menyala) {
-            return response()->json(['message' => 'Alat sedang dimatikan dari dashboard; data tidak disimpan.'], 409);
+            return response()->json(['message' => 'The device was turned off from the dashboard; the reading was not saved.'], 409);
         }
 
         // Cari trial aktif, jika ada.

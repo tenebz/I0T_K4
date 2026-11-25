@@ -6,13 +6,13 @@
     const TAMPILAN = {
         ph: { lower: 'pH', dom: [4, 10], ticks: [4, 6, 8, 10] },
         tds: { lower: 'TDS', dom: [0, 700], ticks: [0, 200, 400, 600] },
-        kekeruhan: { lower: 'kekeruhan', dom: [0, 10], ticks: [0, 2, 4, 6, 8, 10] },
-        suhu: { lower: 'suhu', dom: [20, 35], ticks: [20, 25, 30, 35] },
+        kekeruhan: { lower: 'turbidity', dom: [0, 10], ticks: [0, 2, 4, 6, 8, 10] },
+        suhu: { lower: 'temperature', dom: [20, 35], ticks: [20, 25, 30, 35] },
     };
     const LV = {
         ok: { label: 'Normal', cls: 'ok' },
-        warn: { label: 'Mendekati batas', cls: 'warn' },
-        bad: { label: 'Tidak normal', cls: 'bad' },
+        warn: { label: 'Near limit', cls: 'warn' },
+        bad: { label: 'Out of range', cls: 'bad' },
     };
     const GRAFIK_MAKS = 10; // jumlah percobaan terakhir yang digambar di grafik
     const JEDA_MIN = 600;   // spinner minimal terlihat sebentar walau server cepat
@@ -28,19 +28,45 @@
     const fluid = (method, ...args) => {
         if (window.fluid && typeof window.fluid[method] === 'function') window.fluid[method](...args);
     };
+    // Satu IntersectionObserver bersama: jalankan callback sekali saat elemen terlihat.
+    // Tanpa dukungan IO (browser lama), callback langsung dijalankan.
+    const AMBANG_TERLIHAT = 0.25;
+    const antreTerlihat = new WeakMap();
+    let pengamat = null;
+    const saatTerlihat = (el, callback) => {
+        if (!('IntersectionObserver' in window)) {
+            callback();
+            return;
+        }
+        if (!pengamat) {
+            pengamat = new IntersectionObserver((entries) => {
+                entries.forEach((entry) => {
+                    if (!entry.isIntersecting) return;
+                    const jalankan = antreTerlihat.get(entry.target);
+                    antreTerlihat.delete(entry.target);
+                    pengamat.unobserve(entry.target);
+                    if (jalankan) jalankan();
+                });
+            }, { threshold: AMBANG_TERLIHAT, rootMargin: '0px 0px -8% 0px' });
+        }
+        antreTerlihat.set(el, callback);
+        pengamat.unobserve(el);
+        pengamat.observe(el);
+    };
+
     const introSudahDilihat = () => {
         try { return window.sessionStorage.getItem(KUNCI_INTRO) === '1'; } catch (e) { return false; }
     };
 
-    const fmt = (v, dec) => Number(v).toFixed(dec).replace('.', ',');
+    const fmt = (v, dec) => Number(v).toFixed(dec);
     const pad2 = (n) => (n < 10 ? '0' + n : String(n));
     const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
     const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
     const jeda = (ms) => new Promise((r) => setTimeout(r, ms));
     const joinId = (a) => {
         if (a.length <= 1) return a.join('');
-        if (a.length === 2) return a[0] + ' dan ' + a[1];
-        return a.slice(0, -1).join(', ') + ', dan ' + a[a.length - 1];
+        if (a.length === 2) return a[0] + ' and ' + a[1];
+        return a.slice(0, -1).join(', ') + ', and ' + a[a.length - 1];
     };
     const reduceMotion = () => {
         try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
@@ -70,11 +96,11 @@
 
     function badText(s, v) {
         const val = fmt(v, s.dec);
-        if (s.key === 'ph') return v < s.min ? 'pH asam (' + val + '), di bawah batas aman.' : 'pH basa (' + val + '), di atas batas aman.';
-        if (s.key === 'tds') return 'TDS tinggi (' + val + ' ppm), melebihi batas aman.';
-        if (s.key === 'kekeruhan') return 'Kekeruhan tinggi (' + val + ' NTU), perlu penyaringan.';
-        if (s.key === 'suhu') return 'Suhu ' + (v < s.min ? 'rendah' : 'tinggi') + ' (' + val + ' °C), di luar rentang normal.';
-        return s.nama + ' (' + withUnit(s, v) + ') di luar batas aman.';
+        if (s.key === 'ph') return v < s.min ? 'Acidic pH (' + val + '), below the safe limit.' : 'Alkaline pH (' + val + '), above the safe limit.';
+        if (s.key === 'tds') return 'High TDS (' + val + ' ppm), exceeds the safe limit.';
+        if (s.key === 'kekeruhan') return 'High turbidity (' + val + ' NTU), filtration needed.';
+        if (s.key === 'suhu') return (v < s.min ? 'Low' : 'High') + ' temperature (' + val + ' °C), outside the normal range.';
+        return s.nama + ' (' + withUnit(s, v) + ') is outside the safe limit.';
     }
 
     function arrowFor(s, v, lv) {
@@ -92,8 +118,8 @@
         });
         let text;
         if (bad.length) text = bad.map((s) => badText(s, t[s.key])).join(' ');
-        else if (warn.length) text = 'Parameter normal; ' + joinId(warn.map((s) => s.lower + ' mendekati batas (' + withUnit(s, t[s.key]) + ')')) + ', perlu dipantau.';
-        else text = 'Semua parameter normal, air layak.';
+        else if (warn.length) text = 'Parameters normal; ' + joinId(warn.map((s) => s.lower + ' near its limit (' + withUnit(s, t[s.key]) + ')')) + ', keep monitoring.';
+        else text = 'All parameters normal, water is safe to drink.';
         return { bad, warn, baik: bad.length === 0, text };
     }
 
@@ -113,14 +139,14 @@
             if (method !== 'GET') opts.body = JSON.stringify(body || {});
             res = await fetch(url, opts);
         } catch (e) {
-            const err = new Error('Server tidak merespons. Periksa jaringan, lalu coba lagi.');
+            const err = new Error('The server is not responding. Check your connection, then try again.');
             err.data = null;
             throw err;
         }
         let json = null;
         try { json = await res.json(); } catch (e) { /* bukan JSON */ }
         if (!res.ok) {
-            const err = new Error((json && json.message) || 'Server tidak merespons. Periksa jaringan, lalu coba lagi.');
+            const err = new Error((json && json.message) || 'The server is not responding. Check your connection, then try again.');
             err.data = json;
             throw err;
         }
@@ -138,8 +164,8 @@
 
         const NAV = [
             { id: 'ringkasan', label: 'Dashboard', icon: 'dash', view: 'dashboard', target: null },
-            { id: 'riwayat', label: 'Riwayat', icon: 'chart', view: 'riwayat', target: null },
-            { id: 'evaluasi', label: 'Evaluasi', icon: 'table', view: 'evaluasi', target: null },
+            { id: 'riwayat', label: 'History', icon: 'chart', view: 'riwayat', target: null },
+            { id: 'evaluasi', label: 'Evaluation', icon: 'table', view: 'evaluasi', target: null },
         ];
 
         return {
@@ -196,7 +222,7 @@
 
             /* ---------- Layar pembuka ---------- */
             get introBadge() {
-                return (this.online ? 'Perangkat online' : 'Perangkat offline') + ' · ' + this.total + ' percobaan tercatat';
+                return (this.online ? 'Device online' : 'Device offline') + ' · ' + this.total + (this.total === 1 ? ' trial recorded' : ' trials recorded');
             },
             splitWords(el, baseDelay, stagger) {
                 const words = el.textContent.trim().split(/\s+/);
@@ -216,7 +242,7 @@
                 const rm = reduceMotion();
                 this.introLeaving = true;
                 try { window.sessionStorage.setItem(KUNCI_INTRO, '1'); } catch (e) { /* mode privat */ }
-                fluid('burst', 14, 4);
+                fluid('burst', 12, 1.6);
                 fluid('setInk', TINTA_DASHBOARD);
                 if (view && view !== this.view) {
                     this.view = view;
@@ -234,12 +260,23 @@
             },
 
             /* ---------- Motion grafik ---------- */
-            // Memutar ulang animasi "menggambar" pada grafik/sparkline (dipicu chartRev).
+            // Menyiapkan animasi "menggambar" (kiri → kanan) pada grafik, sparkline, dan bar.
+            // Dipicu chartRev (masuk dashboard / sinkron berhasil), tetapi baru diputar
+            // saat elemen masuk viewport, sehingga grafik di bawah lipatan ikut beranimasi
+            // ketika di-scroll.
             replayDraw(el, rev) {
                 if (!this.entered || rev < 0) return;
                 el.classList.remove('draw');
-                void el.offsetWidth;
-                el.classList.add('draw');
+                if (reduceMotion()) {
+                    el.classList.remove('is-armed');
+                    return;
+                }
+                el.classList.add('is-armed');
+                saatTerlihat(el, () => {
+                    el.classList.remove('is-armed');
+                    void el.offsetWidth;
+                    el.classList.add('draw');
+                });
             },
 
             /* ---------- Data dasar ---------- */
@@ -254,7 +291,7 @@
             get sampleLabel() {
                 if (!this.activeTrial || !this.activeTrial.name) return this.device.sampel;
                 const n = this.activeTrial.name.trim();
-                return n.toLowerCase().startsWith('air ') ? n : 'Air ' + n;
+                return /\bwater\b/i.test(n) ? n : n + ' Water';
             },
 
             /* ---------- Perangkat & daya ---------- */
@@ -262,8 +299,8 @@
             get knobOn() { return this.power === 'on' || this.power === 'turning-on'; },
             get powerChecked() { return (this.power === 'on' || this.power === 'turning-off') ? 'true' : 'false'; },
             get powerLabel() {
-                if (!this.online) return 'Tak terjangkau';
-                return { on: 'Menyala', off: 'Mati', 'turning-on': 'Menyalakan...', 'turning-off': 'Mematikan...' }[this.power];
+                if (!this.online) return 'Unreachable';
+                return { on: 'On', off: 'Off', 'turning-on': 'Turning on…', 'turning-off': 'Turning off…' }[this.power];
             },
             get powerClass() { return !this.online ? 't-dim' : (this.power === 'on' ? 't-ok' : 't-plain'); },
             get showOnline() { return this.online && this.power !== 'off'; },
@@ -275,8 +312,8 @@
             get statusSummary() {
                 if (!this.curEval) return '';
                 return this.curEval.baik
-                    ? 'Semua parameter dalam batas aman'
-                    : cap(joinId(this.curEval.bad.map((s) => s.lower))) + ' di luar batas aman';
+                    ? 'All parameters within safe limits'
+                    : cap(joinId(this.curEval.bad.map((s) => s.lower))) + ' outside safe limits';
             },
             get okCount() { return this.curEval ? SENSORS.length - this.curEval.bad.length : 0; },
 
@@ -301,12 +338,12 @@
                         lineColor: bad ? 'var(--bad)' : 'var(--accent)',
                         up: !same && delta > 0,
                         deltaTxt: same ? '0' : fmt(Math.abs(delta), s.dec),
-                        deltaWord: !prev ? 'percobaan pertama'
-                            : (same ? 'sama dengan P' + pad2(prev.no) : (delta > 0 ? 'naik dari P' : 'turun dari P') + pad2(prev.no)),
+                        deltaWord: !prev ? 'first trial'
+                            : (same ? 'same as T' + pad2(prev.no) : (delta > 0 ? 'up from T' : 'down from T') + pad2(prev.no)),
                         spark: data.map((t, i) => xPos(i).toFixed(2) + ',' + sy(t[s.key]).toFixed(2)).join(' '),
                         dotLeft: xPos(n - 1).toFixed(2),
                         dotTop: (sy(v) / 40 * 100).toFixed(2),
-                        sparkAria: 'Tren ' + s.nama + ' per percobaan: ' + data.map((t) => fmt(t[s.key], s.dec)).join('; '),
+                        sparkAria: s.nama + ' trend per trial: ' + data.map((t) => fmt(t[s.key], s.dec)).join('; '),
                     };
                 });
             },
@@ -339,7 +376,7 @@
                     return {
                         id: s.key + ':' + i, i, left: xPos(i).toFixed(2), top: this.yPos(s, v).toFixed(2), lv,
                         label: fmt(v, s.dec) + (lv === 'bad' ? arrowFor(s, v, lv) : ''),
-                        aria: 'Percobaan ' + t.no + ', ' + s.nama + ' ' + withUnit(s, v) + ', ' + LV[lv].label,
+                        aria: 'Trial ' + t.no + ', ' + s.nama + ' ' + withUnit(s, v) + ', ' + LV[lv].label,
                     };
                 });
 
@@ -352,7 +389,7 @@
                         tip = {
                             left: xPos(hiIdx).toFixed(2), top: this.yPos(s, t[s.key]).toFixed(2),
                             shift: (n > 1 && hiIdx === n - 1) ? '-86%' : ((n > 1 && hiIdx === 0) ? '-14%' : '-50%'),
-                            title: 'Percobaan ' + pad2(t.no), date: t.tanggal + ', ' + t.jam,
+                            title: 'Trial ' + pad2(t.no), date: t.tanggal + ', ' + t.jam,
                             sensor: s.nama, val: withUnit(s, t[s.key]), status: LV[lv].label, cls: 'lv-' + lv,
                         };
                     }
@@ -363,7 +400,7 @@
                     id: s.key + (big ? '-b' : '-s'),
                     key: s.key,
                     gradId: 'area-' + s.key + (big ? '-b' : '-s'),
-                    title: (big ? s.nama + ' per percobaan' : s.nama) + unit,
+                    title: (big ? s.nama + ' per trial' : s.nama) + unit,
                     rangeTxt: s.range,
                     h: big ? 300 : 190,
                     ticks: s.ticks.map((v) => ({ v, top: this.yPos(s, v).toFixed(2), label: fmt(v, 0) })),
@@ -371,7 +408,7 @@
                     line: pts.join(' '),
                     area: pts.join(' ') + ' ' + x1 + ',100 ' + x0 + ',100',
                     points, tip,
-                    xlabels: data.map((t, i) => ({ no: t.no, left: xPos(i).toFixed(2), label: big ? 'Percobaan ' + t.no : 'P' + pad2(t.no) })),
+                    xlabels: data.map((t, i) => ({ no: t.no, left: xPos(i).toFixed(2), label: big ? 'Trial ' + t.no : 'T' + pad2(t.no) })),
                 };
             },
 
@@ -389,7 +426,7 @@
                     return {
                         no: t.no, noPad: pad2(t.no), tanggal: t.tanggal, jam: t.jam + ' WIB',
                         cells, baik: e.baik, evaluasi: e.text,
-                        hay: ('percobaan ' + t.no + ' ' + pad2(t.no) + ' ' + t.tanggal + ' ' + t.jam + ' ' + e.text + ' ' + (e.baik ? 'baik' : 'buruk')).toLowerCase(),
+                        hay: ('trial t' + pad2(t.no) + ' ' + t.no + ' ' + pad2(t.no) + ' ' + t.tanggal + ' ' + t.jam + ' ' + e.text + ' ' + (e.baik ? 'good' : 'poor')).toLowerCase(),
                     };
                 });
             },
@@ -405,9 +442,9 @@
             get pct() { return this.total ? Math.round(this.baikCount / this.total * 100) : 0; },
             get filters() {
                 return [
-                    { id: 'semua', label: 'Semua', count: this.total },
-                    { id: 'baik', label: 'Baik', count: this.baikCount },
-                    { id: 'buruk', label: 'Buruk', count: this.burukCount },
+                    { id: 'semua', label: 'All', count: this.total },
+                    { id: 'baik', label: 'Good', count: this.baikCount },
+                    { id: 'buruk', label: 'Poor', count: this.burukCount },
                 ];
             },
             get sensorHeaders() {
@@ -450,7 +487,7 @@
             async submitTrialName() {
                 const name = (this.trialNameInput || '').trim();
                 if (!name) {
-                    this.trialNameError = 'Nama trial tidak boleh kosong.';
+                    this.trialNameError = 'Trial name cannot be empty.';
                     return;
                 }
                 this.trialNameError = '';
@@ -464,7 +501,7 @@
                     this.showInputDetected = false;
                     this.trialNameInput = '';
                     this.newTrialStarted = true; // flag: trial baru, data di dashboard adalah sisa trial lama
-                    this.showToast({ kind: 'success', title: 'Trial "' + name + '" dimulai', msg: 'Tekan Sinkronkan untuk mengambil data percobaan pertama.' }, 6000);
+                    this.showToast({ kind: 'success', title: 'Trial "' + name + '" started', msg: 'Press Sync to fetch the first trial reading.' }, 6000);
                 } catch (e) {
                     this.trialNameError = e.message;
                 } finally {
@@ -479,14 +516,14 @@
                     const json = await kirim(this.urls.trial_end);
                     // Tambahkan ke completed trials
                     this.completedTrials.unshift(json.trial);
-                    this.showToast({ kind: 'success', title: 'Trial "' + json.trial.name + '" selesai', msg: 'Rata-rata telah dihitung dan disimpan di Evaluasi.' }, 5000);
+                    this.showToast({ kind: 'success', title: 'Trial "' + json.trial.name + '" completed', msg: 'Averages were calculated and saved to Evaluation.' }, 5000);
                     // Reset state aktif tapi PERTAHANKAN trials lama di UI supaya tidak blank
                     this.activeTrial = null;
                     this.newTrialStarted = false;
                     // Tampilkan popup input nama trial baru
                     this.showInputDetected = true;
                 } catch (e) {
-                    this.showToast({ kind: 'error', retry: 'sync', title: 'Gagal mengakhiri trial', msg: e.message });
+                    this.showToast({ kind: 'error', retry: 'sync', title: 'Could not end the trial', msg: e.message });
                 }
             },
 
@@ -496,7 +533,7 @@
                     const json = await kirim(this.urls.trial_history, null, 'GET');
                     this.completedTrials = json.trials;
                 } catch (e) {
-                    this.showToast({ kind: 'error', retry: 'sync', title: 'Gagal memuat histori', msg: e.message });
+                    this.showToast({ kind: 'error', retry: 'sync', title: 'Could not load history', msg: e.message });
                 } finally {
                     this.historyLoading = false;
                 }
@@ -506,18 +543,18 @@
             get notifs() {
                 const list = [];
                 if (this.cur && this.device.terakhir_sinkron) {
-                    list.push({ id: 'sync', kind: 'ok', title: 'Sinkronisasi terakhir berhasil', sub: 'Data Percobaan ' + pad2(this.cur.no) + ' diterima · ' + this.lastSync, no: null });
+                    list.push({ id: 'sync', kind: 'ok', title: 'Last sync successful', sub: 'Trial ' + pad2(this.cur.no) + ' data received · ' + this.lastSync, no: null });
                 }
                 this.trials.slice().reverse().forEach((t) => {
                     if (list.length >= 6) return;
                     const e = nilai(t);
-                    if (e.bad.length) list.push({ id: 'p' + t.no, kind: 'bad', title: 'Percobaan ' + pad2(t.no) + ': air buruk', sub: e.text, no: t.no });
-                    else if (e.warn.length) list.push({ id: 'p' + t.no, kind: 'warn', title: 'Percobaan ' + pad2(t.no) + ': perlu dipantau', sub: e.text, no: t.no });
+                    if (e.bad.length) list.push({ id: 'p' + t.no, kind: 'bad', title: 'Trial ' + pad2(t.no) + ': poor water quality', sub: e.text, no: t.no });
+                    else if (e.warn.length) list.push({ id: 'p' + t.no, kind: 'warn', title: 'Trial ' + pad2(t.no) + ': needs monitoring', sub: e.text, no: t.no });
                 });
                 return list;
             },
             get unread() { return this.notifRead ? 0 : this.notifs.length; },
-            get bellAria() { return this.unread > 0 ? 'Notifikasi, ' + this.unread + ' belum dibaca' : 'Notifikasi'; },
+            get bellAria() { return this.unread > 0 ? 'Notifications, ' + this.unread + ' unread' : 'Notifications'; },
             openNotif(m) {
                 if (m.no) this.openDetail(m.no); else this.notifOpen = false;
             },
@@ -532,15 +569,15 @@
             },
             get viewClass() { return this.leaving ? 'view-out' : (this.switched ? 'view-in' : ''); },
             get viewTitle() {
-                if (this.view === 'riwayat') return 'Riwayat Percobaan';
-                if (this.view === 'evaluasi') return 'Evaluasi';
-                return 'Dashboard Monitoring Kualitas Air';
+                if (this.view === 'riwayat') return 'Trial History';
+                if (this.view === 'evaluasi') return 'Evaluation';
+                return 'Water Quality Monitoring Dashboard';
             },
             get viewSub() {
-                if (this.view === 'riwayat') return 'Daftar dan catatan otomatis untuk setiap percobaan' + (this.activeTrial ? ' — ' + this.activeTrial.name : '') + '.';
-                if (this.view === 'evaluasi') return 'Histori semua trial air minum yang telah selesai.';
-                if (!this.cur) return 'Sampel ' + this.sampleLabel + ' · belum ada percobaan';
-                return 'Sampel ' + this.sampleLabel + ' · ' + this.total + ' percobaan · data terkini dari Percobaan ' + this.curNoPad;
+                if (this.view === 'riwayat') return 'Every trial with its automatic evaluation notes' + (this.activeTrial ? ' — ' + this.activeTrial.name : '') + '.';
+                if (this.view === 'evaluasi') return 'History of all completed drinking water trials.';
+                if (!this.cur) return 'Sample ' + this.sampleLabel + ' · no trials yet';
+                return 'Sample ' + this.sampleLabel + ' · ' + this.total + (this.total === 1 ? ' trial' : ' trials') + ' · latest data from Trial ' + this.curNoPad;
             },
             scrollToTarget(target) {
                 const behavior = reduceMotion() ? 'auto' : 'smooth';
@@ -600,13 +637,13 @@
                 if (this.sync === 'loading' || this.power !== 'on') return;
                 this.sync = 'loading';
                 this.closeToast();
-                fluid('setTempo', 2.6);
+                fluid('setTempo', 2.2);
                 try {
                     const [json] = await Promise.all([kirim(this.urls.sinkron), jeda(JEDA_MIN)]);
                     const sebelum = this.trials.length;
                     this.trials = json.percobaan;
                     this.chartRev++;
-                    fluid('burst', 10, 3);
+                    fluid('burst', 8, 1.3);
                     this.terapkanPerangkat(json.perangkat);
                     if (json.active_trial) this.activeTrial = json.active_trial;
                     this.newTrialStarted = false; // flag trial baru dibersihkan setelah sync
@@ -614,12 +651,12 @@
                     const baru = this.trials.length - sebelum;
                     this.showToast({
                         kind: 'success',
-                        title: 'Data berhasil disinkronkan',
-                        msg: baru > 0 ? baru + ' percobaan baru diterima dari alat.' : 'Pembacaan 4 sensor terbaru sudah diterima.',
+                        title: 'Data synced successfully',
+                        msg: baru > 0 ? baru + (baru === 1 ? ' new trial' : ' new trials') + ' received from the device.' : 'The latest readings from all 4 sensors were received.',
                     }, 4000);
                 } catch (e) {
                     if (e.data && e.data.perangkat) this.terapkanPerangkat(e.data.perangkat);
-                    this.showToast({ kind: 'error', retry: 'sync', title: 'Sinkronisasi gagal', msg: e.message });
+                    this.showToast({ kind: 'error', retry: 'sync', title: 'Sync failed', msg: e.message });
                 } finally {
                     this.sync = 'idle';
                     fluid('setTempo', 1);
@@ -636,14 +673,14 @@
                     this.device = json.perangkat;
                     this.power = json.perangkat.menyala ? 'on' : 'off';
                     if (turningOn) {
-                        this.showToast({ kind: 'success', title: 'Alat dinyalakan', msg: 'Sensor mulai membaca lagi. Sinkronkan untuk mengambil data terbaru.' }, 4000);
+                        this.showToast({ kind: 'success', title: 'Device turned on', msg: 'Sensors are reading again. Sync to fetch the latest data.' }, 4000);
                     } else {
-                        this.showToast({ kind: 'info', title: 'Alat dimatikan', msg: 'Sensor berhenti membaca data sampai alat dinyalakan lagi.' });
+                        this.showToast({ kind: 'info', title: 'Device turned off', msg: 'Sensors stop reading data until the device is turned on again.' });
                     }
                 } catch (e) {
                     this.power = turningOn ? 'off' : 'on';
                     if (e.data && e.data.perangkat) this.device = e.data.perangkat;
-                    this.showToast({ kind: 'error', retry: 'power', title: 'Perintah tidak sampai ke alat', msg: e.message });
+                    this.showToast({ kind: 'error', retry: 'power', title: 'Command did not reach the device', msg: e.message });
                 }
             },
 
@@ -705,7 +742,7 @@
         };
     }
 
-    // x-countup="'7,2'": angka berhitung halus ke nilai baru (format desimal koma).
+    // x-countup="'7.2'": angka berhitung halus ke nilai baru (desimal titik).
     // null = belum tampil; hitungan berikutnya dimulai dari 0.
     function daftarCountUp(Alpine) {
         Alpine.directive('countup', (el, { expression }, { evaluateLater, effect, cleanup }) => {
@@ -727,8 +764,8 @@
                     return;
                 }
                 const str = String(txt);
-                const target = parseFloat(str.replace(',', '.'));
-                const dec = (str.split(',')[1] || '').length;
+                const target = parseFloat(str);
+                const dec = (str.split('.')[1] || '').length;
                 if (!isFinite(target) || reduceMotion()) {
                     el.textContent = str;
                     shown = target;

@@ -14,7 +14,7 @@ class PastikanKunciIot
         $kunci = config('kualitas_air.api_key');
 
         if (filled($kunci) && ! hash_equals((string) $kunci, (string) $request->header('X-Api-Key'))) {
-            return response()->json(['message' => 'Kunci API alat tidak valid.'], 401);
+            return response()->json(['message' => 'Invalid device API key.'], 401);
         }
 
         return $next($request);

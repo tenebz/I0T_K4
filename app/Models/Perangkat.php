@@ -34,7 +34,7 @@ class Perangkat extends Model
     public static function utama(): self
     {
         return static::query()->orderBy('id')->first()
-            ?? static::create(['nama' => 'Perangkat Air A', 'sampel' => 'Air A', 'menyala' => true]);
+            ?? static::create(['nama' => 'Perangkat Air A', 'sampel' => 'Water A', 'menyala' => true]);
     }
 
     public function isOnline(): bool
