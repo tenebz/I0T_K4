@@ -45,29 +45,15 @@
                     <span class="dot" :class="online ? 'dot-ok' : 'dot-bad'" aria-hidden="true"></span>
                     <span x-text="introBadge"></span>
                 </p>
-                <h1 id="intro-title" class="intro-title" x-init="splitWords($el, 480, 85)">Smart Real Time Water Quality Sytem Dashboard</h1>
+                <h1 id="intro-title" class="intro-title" x-init="splitWords($el, 480, 85)">Integrated Real Time Water Quality System</h1>
                 <p class="intro-sub" x-init="splitWords($el, 1150, 22)">pH, TDS, turbidity, and temperature from IoT sensors, evaluated automatically on every trial.</p>
 
                 <div class="intro-cta lm-reveal" style="--d: 1450ms">
-                    <div class="intro-bar">
-                        <span class="intro-reading">
-                            <template x-if="hasData">
-                                <span class="intro-reading-inner">
-                                    <span class="intro-reading-label">Trial <span x-text="curNoPad"></span></span>
-                                    <strong :class="statusBaik ? 't-ok' : 't-bad'" x-text="statusBaik ? 'GOOD' : 'POOR'"></strong>
-                                    <span class="intro-reading-meta" x-text="okCount + '/' + sensorList.length + ' sensors normal'"></span>
-                                </span>
-                            </template>
-                            <template x-if="!hasData">
-                                <span class="intro-reading-meta">No trials recorded yet</span>
-                            </template>
-                        </span>
-                        <button type="button" class="pill pill-lg" :class="{ 'is-loading': introLeaving }" :aria-busy="introLeaving.toString()" @click="enterDashboard()">
-                            <span x-text="introLeaving ? 'Opening…' : 'Go to Dashboard'">Go to Dashboard</span>
-                            <svg x-show="!introLeaving" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
-                            <svg x-show="introLeaving" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
-                        </button>
-                    </div>
+                    <button type="button" class="pill pill-lg" x-ref="introEnter" :class="{ 'is-loading': introLeaving }" :aria-busy="introLeaving.toString()" @click="enterDashboard()">
+                        <span x-text="introLeaving ? 'Opening…' : 'Go to Dashboard'">Go to Dashboard</span>
+                        <svg x-show="!introLeaving" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+                        <svg x-show="introLeaving" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
+                    </button>
                 </div>
             </div>
 
@@ -114,12 +100,20 @@
         </div>
     </template>
 
-    <div class="app" :class="{ 'is-in': entered }" :inert="!entered" :aria-hidden="(!entered).toString()">
+    <div class="app" :class="{ 'is-in': entered, 'is-out': dashLeaving }" :inert="!entered" :aria-hidden="(!entered).toString()">
     {{-- ============ TOP BAR ============ --}}
     <header class="topbar">
         <button type="button" class="icon-btn btn" @click="sidebarOpen = !sidebarOpen" :aria-expanded="sidebarOpen.toString()" aria-label="Show or hide the menu">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         </button>
+
+        <a href="#" class="topbar-brand" @click.prevent="backToIntro()" aria-label="AquaSense — back to the opening screen">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M2.5 9c2.5 0 2.5 4.2 5 4.2S10 9 12 9s2.5 4.2 5 4.2S19.5 9 21.5 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M2.5 15c2.5 0 2.5 4.2 5 4.2S10 15 12 15s2.5 4.2 5 4.2S19.5 15 21.5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.5"/>
+            </svg>
+            <span>AquaSense</span>
+        </a>
 
         <div class="search">
             <label for="cari-percobaan" class="sr-only">Search trials</label>

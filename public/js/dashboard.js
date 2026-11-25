@@ -23,6 +23,7 @@
     const TINTA_DASHBOARD = 0.42; // tinta diredam agar angka & grafik tetap terbaca
     const JEDA_MASUK = 480;      // ms: konten pembuka memudar sebelum dashboard muncul
     const JEDA_INTRO_HILANG = 1100;
+    const JEDA_KELUAR = 360;     // ms: dashboard memudar sebelum layar pembuka diputar ulang
     const DURASI_HITUNG = 900;   // ms: animasi hitung angka KPI
 
     const fluid = (method, ...args) => {
@@ -52,6 +53,15 @@
         antreTerlihat.set(el, callback);
         pengamat.unobserve(el);
         pengamat.observe(el);
+    };
+
+    // Jalankan fn setelah keadaan awal (opacity 0) sempat dilukis: dua frame rAF,
+    // dengan cadangan timer bila rAF tertahan (tab/panel di latar belakang).
+    const setelahDilukis = (fn) => {
+        let sudah = false;
+        const sekali = () => { if (!sudah) { sudah = true; fn(); } };
+        requestAnimationFrame(() => requestAnimationFrame(sekali));
+        setTimeout(sekali, 80);
     };
 
     const introSudahDilihat = () => {
@@ -207,12 +217,13 @@
             introGone: lewatiIntro,
             introLeaving: false,
             introReady: false,
+            dashLeaving: false,
             chartRev: 0,
 
             init() {
                 fluid('setInk', lewatiIntro ? TINTA_DASHBOARD : TINTA_INTRO);
                 // Dua frame: pastikan keadaan awal (opacity 0) sudah dilukis sebelum reveal.
-                requestAnimationFrame(() => requestAnimationFrame(() => { this.introReady = true; }));
+                setelahDilukis(() => { this.introReady = true; });
             },
 
             destroy() {
@@ -237,7 +248,7 @@
                     if (i < words.length - 1) el.appendChild(document.createTextNode(' '));
                 });
             },
-            enterDashboard(view, navId) {
+            enterDashboard(view = 'dashboard', navId = 'ringkasan') {
                 if (this.entered || this.introLeaving) return;
                 const rm = reduceMotion();
                 this.introLeaving = true;
@@ -257,6 +268,34 @@
                     });
                 }, rm ? 0 : JEDA_MASUK));
                 uiTimers.push(setTimeout(() => { this.introGone = true; }, rm ? 0 : JEDA_INTRO_HILANG));
+            },
+
+            // Logo AquaSense di header: kembali ke layar pembuka "Go to Dashboard".
+            backToIntro() {
+                if (!this.entered || this.dashLeaving) return;
+                const rm = reduceMotion();
+                this.notifOpen = false;
+                this.syncDropdownOpen = false;
+                this.hover = null;
+                this.detail = null;
+                this.trialDetail = null;
+                this.dashLeaving = true;
+                fluid('setInk', TINTA_INTRO);
+                fluid('burst', 8, 1.4);
+                uiTimers.push(setTimeout(() => {
+                    this.entered = false;
+                    this.dashLeaving = false;
+                    this.introLeaving = false;
+                    this.introReady = false;
+                    this.introGone = false;
+                    window.scrollTo(0, 0);
+                    // Kata-kata judul terpasang (opacity 0) dulu, baru reveal diputar ulang.
+                    this.$nextTick(() => setelahDilukis(() => {
+                        this.introReady = true;
+                        const cta = this.$refs.introEnter;
+                        if (cta) cta.focus({ preventScroll: true });
+                    }));
+                }, rm ? 0 : JEDA_KELUAR));
             },
 
             /* ---------- Motion grafik ---------- */
