@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Perangkat;
+use App\Models\Trial;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -25,11 +26,22 @@ class PercobaanController extends Controller
         $perangkat->tandaiOnline();
 
         if (! $perangkat->menyala) {
-            return response()->json(['message' => 'Alat sedang dimatikan dari dashboard; data tidak disimpan.'], 409);
+            return response()->json(['message' => 'The device was turned off from the dashboard; the reading was not saved.'], 409);
         }
 
+        // Cari trial aktif, jika ada.
+        $activeTrial = Trial::where('perangkat_id', $perangkat->id)
+            ->where('is_active', true)
+            ->first();
+
+        // Nomor percobaan dimulai dari 1 dalam setiap trial.
+        $nomorBerikutnya = $activeTrial
+            ? (int) $activeTrial->percobaan()->max('nomor') + 1
+            : (int) $perangkat->percobaan()->whereNull('trial_id')->max('nomor') + 1;
+
         $percobaan = $perangkat->percobaan()->create([
-            'nomor' => (int) $perangkat->percobaan()->max('nomor') + 1,
+            'trial_id' => $activeTrial?->id,
+            'nomor' => $nomorBerikutnya,
             'diukur_pada' => isset($data['diukur_pada'])
                 ? Carbon::parse($data['diukur_pada'], config('kualitas_air.zona_waktu'))->utc()
                 : now(),

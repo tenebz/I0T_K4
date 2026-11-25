@@ -25,11 +25,16 @@ class Perangkat extends Model
         return $this->hasMany(Percobaan::class)->orderBy('nomor');
     }
 
+    public function trials(): HasMany
+    {
+        return $this->hasMany(Trial::class);
+    }
+
     /** Dashboard ini memantau satu alat (sampel Air A). */
     public static function utama(): self
     {
         return static::query()->orderBy('id')->first()
-            ?? static::create(['nama' => 'Perangkat Air A', 'sampel' => 'Air A', 'menyala' => true]);
+            ?? static::create(['nama' => 'Perangkat Air A', 'sampel' => 'Water A', 'menyala' => true]);
     }
 
     public function isOnline(): bool
@@ -67,9 +72,26 @@ class Perangkat extends Model
     /** Semua data yang dibutuhkan halaman dashboard. */
     public function dataDashboard(): array
     {
+        $activeTrial = Trial::where('perangkat_id', $this->id)
+            ->where('is_active', true)
+            ->with('percobaan')
+            ->first();
+
+        $completedTrials = Trial::where('perangkat_id', $this->id)
+            ->where('is_active', false)
+            ->orderByDesc('ended_at')
+            ->with('percobaan')
+            ->get()
+            ->map->untukDashboard()
+            ->values();
+
         return [
             'perangkat' => $this->untukDashboard(),
-            'percobaan' => $this->percobaan()->get()->map->untukDashboard()->values(),
+            'percobaan' => $activeTrial
+                ? $activeTrial->percobaan->map->untukDashboard()->values()
+                : collect(),
+            'active_trial' => $activeTrial?->untukDashboard(),
+            'completed_trials' => $completedTrials,
         ];
     }
 }
