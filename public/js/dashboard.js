@@ -126,11 +126,20 @@
     // browser. Diterapkan langsung saat skrip dimuat di <head>, sebelum halaman dilukis,
     // supaya tidak ada kedipan tema yang salah.
     const KUNCI_PENGATURAN = 'aquasense:tampilan';
-    const PENGATURAN_DEFAULT = { theme: 'light', card: 62, sidebar: 60 };
+    // Default "system": tema mengikuti jam perangkat sampai pengguna memilih Light/Dark
+    // sendiri di Settings, dan kembali ke sini lewat "Reset to default".
+    const PENGATURAN_DEFAULT = { theme: 'system', card: 62, sidebar: 60 };
     const TEMA = ['light', 'dark', 'system'];
     const OPASITAS_MIN = 40;
     const OPASITAS_MAX = 100;
-    const mqGelap = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    const JAM_TERANG_MULAI = 7;     // 07:00 — mulai tema terang
+    const JAM_TERANG_SELESAI = 17;  // 17:00 — mulai tema gelap
+    const CEK_JAM_MS = 60 * 1000;   // periksa pergantian pagi/sore tiap menit
+    const siangHari = (now = new Date()) => {
+        const jam = now.getHours();
+        return jam >= JAM_TERANG_MULAI && jam < JAM_TERANG_SELESAI;
+    };
+    const temaAktif = (p) => (p.theme === 'system' ? (siangHari() ? 'light' : 'dark') : p.theme);
     const mqLebar = window.matchMedia ? window.matchMedia('(min-width: 1024px)') : null;
     const layarLebar = () => (mqLebar ? mqLebar.matches : true);
     const opasitasValid = (v, cadangan) => {
@@ -148,14 +157,24 @@
     const simpanPengaturan = (p) => {
         try { window.localStorage.setItem(KUNCI_PENGATURAN, JSON.stringify(p)); } catch (e) { /* mode privat */ }
     };
+    let pengaturanAktif = { ...PENGATURAN_DEFAULT };
     const terapkanPengaturan = (p) => {
+        pengaturanAktif = p;
         const root = document.documentElement;
-        const gelap = p.theme === 'dark' || (p.theme === 'system' && !!mqGelap && mqGelap.matches);
-        root.classList.toggle('theme-dark', gelap);
+        root.classList.toggle('theme-dark', temaAktif(p) === 'dark');
         root.style.setProperty('--card-opacity', p.card + '%');
         root.style.setProperty('--sidebar-opacity', p.sidebar + '%');
     };
     terapkanPengaturan(bacaPengaturan());
+    // Mode "system": berganti sendiri pukul 07:00 dan 17:00 selama halaman terbuka,
+    // dan saat tab kembali terlihat (setelah laptop tidur atau jam diubah).
+    const segarkanTemaWaktu = () => {
+        if (pengaturanAktif.theme === 'system') terapkanPengaturan(pengaturanAktif);
+    };
+    setInterval(segarkanTemaWaktu, CEK_JAM_MS);
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') segarkanTemaWaktu();
+    });
 
     function buatSensor(cfg) {
         return Object.keys(cfg).map((key) => {
@@ -317,7 +336,6 @@
                     else if (mq.addListener) mq.addListener(fn);
                 };
                 dengar(mqLebar, (e) => { this.sidebarOpen = e.matches; });
-                dengar(mqGelap, () => { if (this.prefs.theme === 'system') terapkanPengaturan(this.prefs); });
 
                 // Tinggi topbar berubah saat isinya membungkus di layar sempit; sidebar memakainya.
                 const topbar = this.$root.querySelector('.topbar');
@@ -330,6 +348,11 @@
 
             /* ---------- Settings tampilan ---------- */
             isWide() { return layarLebar(); },
+            // Teks bantuan Settings: jadwal tema "System" dan tema yang sedang dipakai sekarang.
+            systemThemeHint() {
+                const sekarang = siangHari() ? 'light' : 'dark';
+                return 'System (default) switches by time of day: light from 07:00 to 17:00, dark otherwise. Now: ' + sekarang + '.';
+            },
             setPref(key, value) {
                 this.prefs = rapikanPengaturan({ ...this.prefs, [key]: value });
                 terapkanPengaturan(this.prefs);

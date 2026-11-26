@@ -55,6 +55,17 @@ class DashboardLiquidMotionTest extends TestCase
         $response->assertSee('askDeleteTrial(t)', false);
     }
 
+    public function test_status_hero_has_no_icon_and_settings_explain_the_time_based_default(): void
+    {
+        $response = $this->get(route('dashboard'));
+
+        $response->assertOk();
+        $response->assertDontSee('status-icon', false);
+        $response->assertSee('class="status-main"', false);
+        $response->assertSee('x-text="systemThemeHint()"', false);
+        $response->assertDontSee("System follows your device's light or dark setting.");
+    }
+
     public function test_dashboard_header_logo_links_back_to_the_opening_screen(): void
     {
         $response = $this->get(route('dashboard'));
