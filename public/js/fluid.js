@@ -1,7 +1,8 @@
 /*
  * WebGL fluid background (Liquid Motion) for the AquaSense water quality dashboard.
  * Engine: WebGL fluid simulation by Pavel Dobryakov (MIT), tuned for a smooth,
- * flowing-water look over the #050B14 base (--hero-base) with a navy → blue → aqua palette.
+ * flowing-water look: dark water over #050B14 (--hero-base) in the dark theme, pale
+ * light water over #F8FAFC (--canvas) in the light theme, with a navy → blue → aqua palette.
  *
  * Global API (window.fluid):
  *   burst(amount, strength)  splash of dye at random points (e.g. after a successful sync)
@@ -307,7 +308,7 @@ function fluidSimulation(canvas) {
         varying vec2 vB;
         uniform sampler2D uTexture;
         uniform vec2 texelSize;
-        uniform float uLight;   // 0 = dark water (opening screen), 1 = light water (dashboard)
+        uniform float uLight;   // 0 = dark water (dark theme), 1 = light water (light theme)
 
         // Water surface. The whole screen is one body of dark water and the dye
         // is how much lit, shallow water sits on top of it. The dye is smoothed
@@ -872,8 +873,9 @@ function fluidSimulation(canvas) {
     let tempoTarget = tempo;
     let frameCount = 0;
     const root = document.documentElement;
-    // Light water on the light dashboard; dark water on the opening screen and in dark mode.
-    const wantsLight = () => (root.classList.contains('is-dashboard') && !root.classList.contains('theme-dark') ? 1 : 0);
+    // Follows the theme on every screen (opening screen and dashboard): light water in the
+    // light theme, dark water in the dark theme. Crossfades when the theme switches (e.g. 17:00).
+    const wantsLight = () => (root.classList.contains('theme-dark') ? 0 : 1);
     let lightness = wantsLight();
 
     update();

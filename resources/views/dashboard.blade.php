@@ -392,20 +392,14 @@
                     <template x-if="hasData">
                         <section class="card status" :class="{ 'is-bad': !statusBaik }" aria-label="Water quality status">
                             <div class="status-main">
-                                <span class="status-icon" aria-hidden="true">
-                                    <svg x-show="statusBaik" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
-                                    <svg x-show="!statusBaik" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                                </span>
-                                <div style="min-width: 0">
-                                    <div class="status-eyebrow"><span x-text="sampleLabel"></span> status · Trial <span x-text="curNoPad"></span></div>
-                                    <div class="status-line">
-                                        <span class="status-label" x-text="statusBaik ? 'GOOD' : 'POOR'"></span>
-                                        <span class="status-summary" x-text="statusSummary"></span>
-                                    </div>
-                                    <div class="status-meta"><span x-text="cur.tanggal"></span>, <span x-text="cur.jam"></span> WIB · <span x-text="okCount"></span> of <span x-text="sensorList.length"></span> parameters normal</div>
+                                <div class="status-eyebrow"><span x-text="sampleLabel"></span> status · Trial <span x-text="curNoPad"></span></div>
+                                <div class="status-line">
+                                    <span class="status-label" x-text="statusBaik ? 'GOOD' : 'POOR'"></span>
+                                    <span class="status-summary" x-text="statusSummary"></span>
                                 </div>
+                                <div class="status-meta"><span x-text="cur.tanggal"></span>, <span x-text="cur.jam"></span> WIB · <span x-text="okCount"></span> of <span x-text="sensorList.length"></span> parameters normal</div>
                             </div>
-                            <button type="button" class="btn-outline btn" @click="openDetail(cur.no)">View trial details</button>
+                            <button type="button" class="btn-outline btn status-action" @click="openDetail(cur.no)">View trial details</button>
                         </section>
                     </template>
 
@@ -760,7 +754,7 @@
                             <button type="button" class="seg btn" :aria-pressed="(prefs.theme === t.id).toString()" @click="setPref('theme', t.id)" x-text="t.label"></button>
                         </template>
                     </div>
-                    <p class="setting-hint">System follows your device's light or dark setting.</p>
+                    <p class="setting-hint" x-text="systemThemeHint()"></p>
                 </div>
                 <div>
                     <label for="setting-card" class="setting-label"><span>Card opacity</span><span class="setting-value" x-text="prefs.card + '%'"></span></label>
