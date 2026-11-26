@@ -20,7 +20,7 @@
     // Layar pembuka & latar fluida (lihat public/js/fluid.js).
     const KUNCI_INTRO = 'kualitas-air:intro-dilihat';
     const TINTA_INTRO = 1;       // tinta penuh di layar pembuka
-    const TINTA_DASHBOARD = 0.42; // tinta diredam agar angka & grafik tetap terbaca
+    const TINTA_DASHBOARD = 0.7;  // air terang tetap terlihat; kartu solid menjaga angka & grafik terbaca
     const JEDA_MASUK = 650;      // ms: konten pembuka memudar & ledakan air terlihat sebelum dashboard muncul
     const JEDA_INTRO_HILANG = 1100;
     const JEDA_KELUAR = 360;     // ms: dashboard memudar sebelum layar pembuka diputar ulang
@@ -121,6 +121,41 @@
     const reduceMotion = () => {
         try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
     };
+
+    // Pengaturan tampilan (menu Settings): tema & ketebalan kartu/sidebar, disimpan di
+    // browser. Diterapkan langsung saat skrip dimuat di <head>, sebelum halaman dilukis,
+    // supaya tidak ada kedipan tema yang salah.
+    const KUNCI_PENGATURAN = 'aquasense:tampilan';
+    const PENGATURAN_DEFAULT = { theme: 'light', card: 62, sidebar: 60 };
+    const TEMA = ['light', 'dark', 'system'];
+    const OPASITAS_MIN = 40;
+    const OPASITAS_MAX = 100;
+    const mqGelap = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    const mqLebar = window.matchMedia ? window.matchMedia('(min-width: 1024px)') : null;
+    const layarLebar = () => (mqLebar ? mqLebar.matches : true);
+    const opasitasValid = (v, cadangan) => {
+        const n = Math.round(Number(v));
+        return Number.isFinite(n) ? Math.min(OPASITAS_MAX, Math.max(OPASITAS_MIN, n)) : cadangan;
+    };
+    const rapikanPengaturan = (p) => ({
+        theme: TEMA.includes(p && p.theme) ? p.theme : PENGATURAN_DEFAULT.theme,
+        card: opasitasValid(p && p.card, PENGATURAN_DEFAULT.card),
+        sidebar: opasitasValid(p && p.sidebar, PENGATURAN_DEFAULT.sidebar),
+    });
+    const bacaPengaturan = () => {
+        try { return rapikanPengaturan(JSON.parse(window.localStorage.getItem(KUNCI_PENGATURAN) || '{}')); } catch (e) { return { ...PENGATURAN_DEFAULT }; }
+    };
+    const simpanPengaturan = (p) => {
+        try { window.localStorage.setItem(KUNCI_PENGATURAN, JSON.stringify(p)); } catch (e) { /* mode privat */ }
+    };
+    const terapkanPengaturan = (p) => {
+        const root = document.documentElement;
+        const gelap = p.theme === 'dark' || (p.theme === 'system' && !!mqGelap && mqGelap.matches);
+        root.classList.toggle('theme-dark', gelap);
+        root.style.setProperty('--card-opacity', p.card + '%');
+        root.style.setProperty('--sidebar-opacity', p.sidebar + '%');
+    };
+    terapkanPengaturan(bacaPengaturan());
 
     function buatSensor(cfg) {
         return Object.keys(cfg).map((key) => {
@@ -232,7 +267,14 @@
             hover: null,
             detail: null,
             trialDetail: null,
-            sidebarOpen: true,
+            sidebarOpen: layarLebar(),   // laptop: kolom terbuka; HP/tablet: laci tertutup
+            settingsOpen: false,
+            prefs: bacaPengaturan(),
+            themeOptions: [
+                { id: 'light', label: 'Light' },
+                { id: 'dark', label: 'Dark' },
+                { id: 'system', label: 'System' },
+            ],
             nav: 'ringkasan',
             notifOpen: false,
             notifRead: false,
@@ -267,6 +309,53 @@
                 fluid('setInk', lewatiIntro ? TINTA_DASHBOARD : TINTA_INTRO);
                 // Dua frame: pastikan keadaan awal (opacity 0) sudah dilukis sebelum reveal.
                 setelahDilukis(() => { this.introReady = true; });
+
+                // Responsif: sidebar jadi kolom di laptop, laci di HP/tablet.
+                const dengar = (mq, fn) => {
+                    if (!mq) return;
+                    if (mq.addEventListener) mq.addEventListener('change', fn);
+                    else if (mq.addListener) mq.addListener(fn);
+                };
+                dengar(mqLebar, (e) => { this.sidebarOpen = e.matches; });
+                dengar(mqGelap, () => { if (this.prefs.theme === 'system') terapkanPengaturan(this.prefs); });
+
+                // Tinggi topbar berubah saat isinya membungkus di layar sempit; sidebar memakainya.
+                const topbar = this.$root.querySelector('.topbar');
+                if (topbar && 'ResizeObserver' in window) {
+                    new ResizeObserver(() => {
+                        document.documentElement.style.setProperty('--topbar-h', Math.round(topbar.getBoundingClientRect().height) + 'px');
+                    }).observe(topbar);
+                }
+            },
+
+            /* ---------- Settings tampilan ---------- */
+            isWide() { return layarLebar(); },
+            setPref(key, value) {
+                this.prefs = rapikanPengaturan({ ...this.prefs, [key]: value });
+                terapkanPengaturan(this.prefs);
+                simpanPengaturan(this.prefs);
+            },
+            resetPrefs() {
+                this.prefs = { ...PENGATURAN_DEFAULT };
+                terapkanPengaturan(this.prefs);
+                simpanPengaturan(this.prefs);
+            },
+            toggleSettings() {
+                if (this.settingsOpen) { this.closeSettings(false); return; }
+                this.notifOpen = false;
+                this.syncDropdownOpen = false;
+                // Di HP laci ditutup dulu supaya perubahan kartu langsung terlihat.
+                if (!layarLebar()) this.sidebarOpen = false;
+                this.settingsOpen = true;
+                this.$nextTick(() => {
+                    const first = document.querySelector('#settings-panel .seg[aria-pressed="true"]');
+                    if (first) first.focus({ preventScroll: true });
+                });
+            },
+            closeSettings(returnFocus) {
+                if (!this.settingsOpen) return;
+                this.settingsOpen = false;
+                if (returnFocus && this.$refs.settingsBtn) this.$refs.settingsBtn.focus({ preventScroll: true });
             },
 
             destroy() {
@@ -392,14 +481,14 @@
                 return { on: 'On', off: 'Off', 'turning-on': 'Turning on…', 'turning-off': 'Turning off…' }[this.power];
             },
             get powerClass() { return !this.online ? 't-dim' : (this.power === 'on' ? 't-ok' : 't-plain'); },
-            // Panel Device: "Online" hanya saat alat terjangkau DAN ada trial yang sedang berjalan.
+            // Panel Device memakai keadaan yang sama dengan chip di topbar (online / off / offline),
+            // supaya keduanya tidak pernah bertentangan. Trial aktif tampil terpisah di baris "Sample".
             get deviceStatus() {
                 if (!this.online) return 'Offline';
-                return this.activeTrial ? 'Online' : 'Offline';
+                return this.power === 'off' ? 'Off' : 'Online';
             },
             get deviceStatusClass() {
-                if (!this.online) return 't-bad';
-                return this.activeTrial ? 't-ok' : 't-dim';
+                return this.showOnline ? 'tag-ok' : 'tag-offline';
             },
             get showOnline() { return this.online && this.power !== 'off'; },
             get showPowerOff() { return this.online && this.power === 'off'; },
@@ -458,7 +547,7 @@
                         key: s.key, nama: s.nama, satuan: s.satuan, rangeTxt: s.range,
                         valTxt: fmt(v, s.dec), isBad: bad,
                         tile: bad ? 'tile-bad' : 'tile-' + s.key,
-                        lineColor: bad ? 'var(--bad)' : 'var(--accent)',
+                        lineColor: bad ? 'var(--bad)' : 'var(--primary)',
                         up: !same && delta > 0,
                         deltaTxt: same ? '0' : fmt(Math.abs(delta), s.dec),
                         deltaWord: !prev ? 'first trial'
@@ -801,7 +890,10 @@
                     });
                 }, reduceMotion() ? 0 : 120));
             },
-            pickNav(n) { this.go(n.view, n.id, n.target); },
+            pickNav(n) {
+                if (!layarLebar()) this.sidebarOpen = false;   // laci HP menutup setelah memilih menu
+                this.go(n.view, n.id, n.target);
+            },
             onQuery(v) {
                 this.query = v;
                 if (v.trim() && this.view !== 'riwayat') this.go('riwayat', 'riwayat', null, true);

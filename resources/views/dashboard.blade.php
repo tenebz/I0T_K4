@@ -3,7 +3,9 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AquaSense — Water Quality Dashboard</title>
+    <title>AquaSense Water Quality </title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}?v={{ filemtime(public_path('favicon.svg')) }}">
+    <meta name="theme-color" content="#0284C7">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&display=swap">
@@ -65,7 +67,7 @@
             <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="judul-input-detected" tabindex="-1" style="width: 480px">
                 <div class="dialog-head" style="border-bottom: none; padding-bottom: 0">
                     <div style="width: 100%; text-align: center">
-                        <div style="margin: 0 auto 16px; width: 72px; height: 72px; border-radius: 22px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center">
+                        <div style="margin: 0 auto 16px; width: 72px; height: 72px; border-radius: 22px; background: var(--primary-soft); color: var(--primary); display: flex; align-items: center; justify-content: center">
                             <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7s-6 6.6-6 11.3a6 6 0 0 0 12 0c0-4.7-6-11.3-6-11.3z"/></svg>
                         </div>
                         <template x-if="!trialPromptManual">
@@ -130,7 +132,7 @@
                 <span class="chip chip-online"><span class="dot dot-ok" aria-hidden="true"></span>Device online</span>
             </template>
             <template x-if="!online">
-                <span class="chip chip-offline"><span class="dot dot-bad" aria-hidden="true"></span>Device offline</span>
+                <span class="chip chip-offline"><span class="dot dot-offline" aria-hidden="true"></span>Device offline</span>
             </template>
 
             <div class="notif" @keydown.escape="notifOpen = false" @click.outside="notifOpen = false">
@@ -171,7 +173,10 @@
 
     <div class="layout">
 
-        {{-- ============ SIDEBAR ============ --}}
+        {{-- ============ SIDEBAR (kolom di laptop, laci di HP/tablet) ============ --}}
+        <template x-if="sidebarOpen">
+            <div class="drawer-backdrop" aria-hidden="true" @click="sidebarOpen = false" @keydown.escape.window="if (!isWide()) sidebarOpen = false"></div>
+        </template>
         <template x-if="sidebarOpen">
             <nav class="sidebar" aria-label="Main menu">
                 <template x-for="n in navs" :key="n.id">
@@ -192,11 +197,18 @@
                 <div class="divider"></div>
                 <div class="side-heading">Device</div>
                 <div class="device-box">
-                    <div class="kv"><span>Status</span><strong :class="deviceStatusClass" x-text="deviceStatus"></strong></div>
+                    <div class="kv"><span>Status</span><strong class="tag" :class="deviceStatusClass" x-text="deviceStatus"></strong></div>
                     <div class="kv"><span>Power</span><strong :class="powerClass" x-text="powerLabel"></strong></div>
                     <div class="kv"><span>Sample</span><strong :class="{ 't-dim': !activeTrial }" x-text="activeTrial ? activeTrial.name : '—'" :title="activeTrial ? activeTrial.name : 'No active trial'"></strong></div>
                     <div class="kv"><span>Active Sensors</span><strong x-text="sensorList.length"></strong></div>
                     <div class="kv"><span>Last Sync</span><strong x-text="lastSync"></strong></div>
+                </div>
+
+                <div class="sidebar-foot">
+                    <button type="button" class="nav settings-btn" x-ref="settingsBtn" @click="toggleSettings()" :aria-expanded="settingsOpen.toString()" aria-controls="settings-panel">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.56 1z"/></svg>
+                        <span class="nav-label">Settings</span>
+                    </button>
                 </div>
             </nav>
         </template>
@@ -225,7 +237,7 @@
                                 :aria-busy="powerBusy.toString()" :disabled="!online || powerBusy" @click="togglePower()">
                             <span class="track" aria-hidden="true"></span>
                             <span class="knob" aria-hidden="true">
-                                <svg x-show="powerBusy" class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3B4250" stroke-width="3" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
+                                <svg x-show="powerBusy" class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" style="stroke: var(--primary)" stroke-width="3" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
                             </span>
                         </button>
                         <span id="status-alat" class="power-label" :class="powerClass" x-text="powerLabel"></span>
@@ -495,12 +507,12 @@
                                                 <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
                                                     <defs>
                                                         <linearGradient :id="c.gradId" x1="0" y1="0" x2="0" y2="1">
-                                                            <stop offset="0" style="stop-color: var(--accent); stop-opacity: 0.22"/>
-                                                            <stop offset="1" style="stop-color: var(--accent); stop-opacity: 0"/>
+                                                            <stop offset="0" class="chart-area-stop" style="stop-opacity: 0.14"/>
+                                                            <stop offset="1" class="chart-area-stop" style="stop-opacity: 0"/>
                                                         </linearGradient>
                                                     </defs>
                                                     <polygon class="chart-area" :points="c.area" :fill="'url(#' + c.gradId + ')'"/>
-                                                    <polyline class="chart-line" :points="c.line" fill="none" style="stroke: var(--accent)" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+                                                    <polyline class="chart-line" :points="c.line" fill="none" stroke-width="2.5" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
                                                 </svg>
                                                 <template x-for="p in c.points" :key="p.id">
                                                     <div class="pt-label" aria-hidden="true" :class="[p.lv, { minor: p.minor }]" :style="{ left: p.left + '%', top: p.top + '%', '--x': p.left }" x-text="p.label"></div>
@@ -560,7 +572,7 @@
                             <div>
                                 <h2 class="section-title sm">Trial list
                                     <template x-if="activeTrial">
-                                        <span style="color: var(--accent)"> — <span x-text="activeTrial.name"></span></span>
+                                        <span style="color: var(--body-muted)"> — <span x-text="activeTrial.name"></span></span>
                                     </template>
                                 </h2>
                                 <p class="section-sub">Click a row to open trial details. New trials are added when you sync.</p>
@@ -729,6 +741,43 @@
             </template>
         </main>
     </div>
+
+    {{-- ============ SETTINGS: tema & ketebalan kartu/sidebar (tersimpan di browser) ============ --}}
+    <template x-if="settingsOpen">
+        <section id="settings-panel" class="settings-panel" :class="{ 'beside-sidebar': sidebarOpen }" role="dialog" aria-labelledby="settings-title"
+                 @keydown.escape.window="closeSettings(true)" @click.outside="if (!$event.target.closest('.settings-btn')) closeSettings(false)">
+            <div class="settings-head">
+                <h2 id="settings-title" class="settings-title">Display settings</h2>
+                <button type="button" class="toast-close" @click="closeSettings(true)" aria-label="Close settings">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="settings-body">
+                <div>
+                    <div id="setting-theme-label" class="setting-label">Theme</div>
+                    <div class="segmented" role="group" aria-labelledby="setting-theme-label">
+                        <template x-for="t in themeOptions" :key="t.id">
+                            <button type="button" class="seg btn" :aria-pressed="(prefs.theme === t.id).toString()" @click="setPref('theme', t.id)" x-text="t.label"></button>
+                        </template>
+                    </div>
+                    <p class="setting-hint">System follows your device's light or dark setting.</p>
+                </div>
+                <div>
+                    <label for="setting-card" class="setting-label"><span>Card opacity</span><span class="setting-value" x-text="prefs.card + '%'"></span></label>
+                    <input id="setting-card" type="range" min="40" max="100" step="1" :value="prefs.card" @input="setPref('card', +$event.target.value)">
+                </div>
+                <div>
+                    <label for="setting-sidebar" class="setting-label"><span>Sidebar opacity</span><span class="setting-value" x-text="prefs.sidebar + '%'"></span></label>
+                    <input id="setting-sidebar" type="range" min="40" max="100" step="1" :value="prefs.sidebar" @input="setPref('sidebar', +$event.target.value)">
+                    <p class="setting-hint">Lower values let more of the water show through. 100% is fully solid.</p>
+                </div>
+                <div class="settings-foot">
+                    <span>Saved on this device</span>
+                    <button type="button" class="link-btn" @click="resetPrefs()">Reset to default</button>
+                </div>
+            </div>
+        </section>
+    </template>
     </div>
 
     {{-- ============ TOAST ============ --}}

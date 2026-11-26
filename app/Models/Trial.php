@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class Trial extends Model
 {
@@ -45,11 +46,37 @@ class Trial extends Model
             return null;
         }
 
+        return $this->bulatkanRataRata($avg->ph, $avg->tds, $avg->kekeruhan, $avg->suhu);
+    }
+
+    /**
+     * Sama dengan rataRata(), tetapi dihitung dari relasi percobaan yang sudah dimuat
+     * sehingga tidak menambah query per trial saat menampilkan banyak trial sekaligus.
+     *
+     * @return array{ph: float, tds: float, kekeruhan: float, suhu: float}|null
+     */
+    private function rataRataDariMuatan(Collection $percobaan): ?array
+    {
+        if ($percobaan->isEmpty()) {
+            return null;
+        }
+
+        return $this->bulatkanRataRata(
+            $percobaan->avg('ph'),
+            $percobaan->avg('tds'),
+            $percobaan->avg('kekeruhan'),
+            $percobaan->avg('suhu'),
+        );
+    }
+
+    /** @return array{ph: float, tds: float, kekeruhan: float, suhu: float} */
+    private function bulatkanRataRata(mixed $ph, mixed $tds, mixed $kekeruhan, mixed $suhu): array
+    {
         return [
-            'ph' => round((float) $avg->ph, 2),
-            'tds' => round((float) $avg->tds, 1),
-            'kekeruhan' => round((float) $avg->kekeruhan, 2),
-            'suhu' => round((float) $avg->suhu, 2),
+            'ph' => round((float) $ph, 2),
+            'tds' => round((float) $tds, 1),
+            'kekeruhan' => round((float) $kekeruhan, 2),
+            'suhu' => round((float) $suhu, 2),
         ];
     }
 
@@ -64,15 +91,19 @@ class Trial extends Model
         $mulai = $this->started_at->copy()->setTimezone($zona);
         $selesai = $this->ended_at?->copy()->setTimezone($zona);
 
+        // Satu kali muat (atau pakai hasil eager load ->with('percobaan')),
+        // lalu jumlah & rata-rata dihitung dari koleksi ini tanpa query tambahan.
+        $percobaan = $this->percobaan;
+
         return [
             'id' => $this->id,
             'name' => $this->name,
             'is_active' => $this->is_active,
             'started_at' => $mulai->translatedFormat('j M Y H:i'),
             'ended_at' => $selesai?->translatedFormat('j M Y H:i'),
-            'jumlah_percobaan' => $this->percobaan()->count(),
-            'rata_rata' => $this->is_active ? null : $this->rataRata(),
-            'percobaan' => $this->percobaan->map->untukDashboard()->values(),
+            'jumlah_percobaan' => $percobaan->count(),
+            'rata_rata' => $this->is_active ? null : $this->rataRataDariMuatan($percobaan),
+            'percobaan' => $percobaan->map->untukDashboard()->values(),
         ];
     }
 }

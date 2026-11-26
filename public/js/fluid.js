@@ -1,7 +1,7 @@
 /*
  * WebGL fluid background (Liquid Motion) for the AquaSense water quality dashboard.
  * Engine: WebGL fluid simulation by Pavel Dobryakov (MIT), tuned for a smooth,
- * flowing-water look over the #04050c base with a navy → blue → aqua palette.
+ * flowing-water look over the #050B14 base (--hero-base) with a navy → blue → aqua palette.
  *
  * Global API (window.fluid):
  *   burst(amount, strength)  splash of dye at random points (e.g. after a successful sync)
@@ -28,7 +28,7 @@ function fluidSimulation(canvas) {
         SHADING: true,
         COLORFUL: true,
         PAUSED: false,
-        BACK_COLOR: { r: 4, g: 5, b: 12 }, // deep near-black base (immersive)
+        BACK_COLOR: { r: 5, g: 11, b: 20 }, // --hero-base #050B14
         TRANSPARENT: false,
         BLOOM: false,
         BLOOM_ITERATIONS: 8,
@@ -61,6 +61,8 @@ function fluidSimulation(canvas) {
     if (!ext.supportLinearFiltering) {
         config.SHADING = false;
         config.BLOOM = false;
+        // Flat dye has no light variant: the dashboard then shows its solid canvas instead.
+        document.documentElement.classList.add('fluid-flat');
     }
     // Keep GPU load reasonable on phones and small screens.
     if (isMobile() || Math.min(window.screen.width, window.screen.height) < 700) {
@@ -305,6 +307,7 @@ function fluidSimulation(canvas) {
         varying vec2 vB;
         uniform sampler2D uTexture;
         uniform vec2 texelSize;
+        uniform float uLight;   // 0 = dark water (opening screen), 1 = light water (dashboard)
 
         // Water surface. The whole screen is one body of dark water and the dye
         // is how much lit, shallow water sits on top of it. The dye is smoothed
@@ -349,22 +352,35 @@ function fluidSimulation(canvas) {
             // waterline and a light-catching rim — like water on dark glass.
             float peak = max(C.r, max(C.g, C.b));
             vec3 hue = C / max(peak, 0.0001);
-            vec3 clearTint = vec3(0.50, 0.82, 1.0);
+            vec3 clearTint = vec3(0.56, 0.86, 1.0);
             vec3 waterHue = mix(hue, clearTint, 0.5);
             float fill = 1.0 - exp(-peak * 1.45);
-            vec3 shallow = waterHue * fill * 0.17;
-            vec3 deep = vec3(0.010, 0.022, 0.050);
+            vec3 shallow = waterHue * fill * 0.34;   // was 0.17: brighter, more visible water
+            vec3 deep = vec3(0.020, 0.043, 0.078); // --hero-base
             float cover = smoothstep(0.035, 0.22, h);
 
             vec3 col = mix(deep, shallow * diffuse, cover);
             float relief = smoothstep(0.01, 0.12, h);
             // Meniscus: a thin bright band right where the water begins.
             float meniscus = smoothstep(0.035, 0.10, h) * (1.0 - smoothstep(0.10, 0.26, h));
-            col += clearTint * meniscus * 0.30;
+            col += clearTint * meniscus * 0.42;
             col += vec3(0.88, 0.97, 1.0) * sparkle * 1.15 * relief;
-            col += clearTint * rim * 0.26 * relief;
+            col += clearTint * rim * 0.36 * relief;
 
-            float a = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
+            // Light water for the dashboard ("Clean Aqua & Slate"): the same surface,
+            // drawn as pale blue water over the #F8FAFC canvas. The body is a faint
+            // #0284C7 tint, waves are carried by a slightly deeper rim and waterline,
+            // and glints stay white. Kept low-contrast so cards and text read first.
+            vec3 base = vec3(0.973, 0.980, 0.988);     // --canvas  #F8FAFC
+            vec3 ocean = vec3(0.008, 0.518, 0.780);    // --primary #0284C7
+            vec3 body = mix(base, ocean, 0.12 + 0.34 * fill) * (0.94 + 0.06 * diffuse);
+            vec3 lightCol = mix(base, body, cover);
+            lightCol = mix(lightCol, ocean, meniscus * 0.38);
+            lightCol = mix(lightCol, ocean, rim * 0.42 * relief);
+            lightCol += vec3(1.0) * sparkle * 0.6 * relief;
+
+            col = mix(col, clamp(lightCol, 0.0, 1.0), uLight);
+            float a = mix(clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0), 1.0, uLight);
             gl_FragColor = vec4(col, a);
         }
     `);
@@ -855,6 +871,10 @@ function fluidSimulation(canvas) {
     let tempo = prefersReducedMotion ? 0.4 : 1;
     let tempoTarget = tempo;
     let frameCount = 0;
+    const root = document.documentElement;
+    // Light water on the light dashboard; dark water on the opening screen and in dark mode.
+    const wantsLight = () => (root.classList.contains('is-dashboard') && !root.classList.contains('theme-dark') ? 1 : 0);
+    let lightness = wantsLight();
 
     update();
 
@@ -866,7 +886,14 @@ function fluidSimulation(canvas) {
             rafHandle = requestAnimationFrame(update);
             return;
         }
+        // CSS hides the canvas only where the light water cannot be drawn (flat-shading
+        // fallback on the dashboard): skip all GL work until it is visible again.
+        if (getComputedStyle(canvas).visibility === 'hidden') {
+            rafHandle = requestAnimationFrame(update);
+            return;
+        }
         ink += (inkTarget - ink) * 0.04;
+        lightness += (wantsLight() - lightness) * 0.06;   // ≈ 0.8 s crossfade, matches the scrim
         tempo += ((prefersReducedMotion ? Math.min(tempoTarget, 0.4) : tempoTarget) - tempo) * 0.05;
         resizeCanvas();
         driveVirtualPointer();
@@ -1044,6 +1071,7 @@ function fluidSimulation(canvas) {
             program.bind();
             // Tent-filter footprint: 2 dye texels, smooths filaments into rounded water.
             gl.uniform2f(program.uniforms.texelSize, 2.0 / dyeWidth, 2.0 / dyeHeight);
+            if (program.uniforms.uLight) gl.uniform1f(program.uniforms.uLight, lightness);
             gl.uniform1i(program.uniforms.uTexture, density.read.attach(0));
             if (config.BLOOM) {
                 gl.uniform1i(program.uniforms.uBloom, bloom.attach(1));
@@ -1311,29 +1339,24 @@ function fluidSimulation(canvas) {
     };
 
     function generateColor() {
-        // Clear-water palette: lightly tinted navy → blue → near-clear aqua (low saturation).
-        // Deeper layers are darker and more frequent; aqua highlights are rarer,
-        // paler and brighter, like light caught in moving water.
+        // Bright clear-water palette built around --aqua: mostly sky blue and aqua,
+        // with a smaller share of navy for depth.
         const layer = Math.random();
         let h, s, v;
-        if (layer < 0.42) {
+        if (layer < 0.25) {
             h = 0.62 + Math.random() * 0.04;  // deep navy (≈ 223–238°)
             s = 0.50 + Math.random() * 0.14;
-            v = 0.46 + Math.random() * 0.16;
-        } else if (layer < 0.78) {
-            h = 0.56 + Math.random() * 0.05;  // medium blue (≈ 202–220°)
+            v = 0.62 + Math.random() * 0.14;
+        } else if (layer < 0.62) {
+            h = 0.54 + Math.random() * 0.04;  // sky blue (≈ 194–209°, around --aqua #38BDF8)
             s = 0.38 + Math.random() * 0.16;
-            v = 0.62 + Math.random() * 0.18;
+            v = 0.80 + Math.random() * 0.14;
         } else {
             h = 0.50 + Math.random() * 0.04;  // soft cyan / aqua (≈ 180–194°)
-            s = 0.22 + Math.random() * 0.16;
-            v = 0.72 + Math.random() * 0.14;
+            s = 0.30 + Math.random() * 0.16;
+            v = 0.90 + Math.random() * 0.10;
         }
-        let c = HSVtoRGB(h, s, v);
-        c.r *= 0.92;
-        c.g *= 0.92;
-        c.b *= 0.92;
-        return c;
+        return HSVtoRGB(h, s, v);
     }
 
     function HSVtoRGB(h, s, v) {

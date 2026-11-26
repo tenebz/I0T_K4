@@ -34,11 +34,13 @@ class Percobaan extends Model
 
     public function untukDashboard(): array
     {
-        $waktu = $this->diukur_pada->copy()->setTimezone(config('kualitas_air.zona_waktu'))->locale('en');
+        // format() sudah memakai nama bulan bahasa Inggris (sama dengan locale 'en'),
+        // dan jauh lebih ringan daripada translatedFormat() untuk ribuan baris.
+        $waktu = $this->diukur_pada->copy()->setTimezone(config('kualitas_air.zona_waktu'));
 
         return [
             'no' => $this->nomor,
-            'tanggal' => $waktu->translatedFormat('j M Y'),
+            'tanggal' => $waktu->format('j M Y'),
             'jam' => $waktu->format('H:i'),
             'ph' => $this->ph,
             'tds' => $this->tds,
