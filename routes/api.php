@@ -13,8 +13,8 @@ Route::post('/perangkat/daya', [PerangkatController::class, 'daya'])->name('api.
 // Trial management (browser).
 Route::post('/trial/start', [TrialController::class, 'start'])->name('api.trial.start');
 Route::post('/trial/end', [TrialController::class, 'end'])->name('api.trial.end');
-Route::get('/trial/status', [TrialController::class, 'status'])->name('api.trial.status');
 Route::get('/trial/history', [TrialController::class, 'history'])->name('api.trial.history');
+Route::get('/trial/{trial}', [TrialController::class, 'show'])->whereNumber('trial')->name('api.trial.show');
 Route::delete('/trial/{trial}', [TrialController::class, 'destroy'])->whereNumber('trial')->name('api.trial.destroy');
 
 // Dipanggil dari alat IoT (ESP32/ESP8266).

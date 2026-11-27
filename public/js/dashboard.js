@@ -20,10 +20,10 @@
     // Layar pembuka & latar fluida (lihat public/js/fluid.js).
     const KUNCI_INTRO = 'kualitas-air:intro-dilihat';
     const TINTA_INTRO = 1;       // tinta penuh di layar pembuka
-    const TINTA_DASHBOARD = 0.7;  // air terang tetap terlihat; kartu solid menjaga angka & grafik terbaca
     const JEDA_MASUK = 650;      // ms: konten pembuka memudar & ledakan air terlihat sebelum dashboard muncul
     const JEDA_INTRO_HILANG = 1100;
     const JEDA_KELUAR = 360;     // ms: dashboard memudar sebelum layar pembuka diputar ulang
+    const BARIS_PER_TAHAP = 100; // baris History per frame saat digambar bertahap
     const DURASI_HITUNG = 900;   // ms: animasi hitung angka KPI
 
     const fluid = (method, ...args) => {
@@ -107,6 +107,22 @@
     const introSudahDilihat = () => {
         try { return window.sessionStorage.getItem(KUNCI_INTRO) === '1'; } catch (e) { return false; }
     };
+    // Layar pembuka sudah dilihat di tab ini: tandai dashboard sejak lukisan pertama, supaya
+    // air (yang hanya untuk layar pembuka) tidak sempat tampil lalu memudar saat reload.
+    if (introSudahDilihat()) document.documentElement.classList.add('is-dashboard');
+
+    // Mode hemat untuk laptop/HP berspesifikasi rendah (≤ 4 thread CPU atau ≤ 4 GB RAM):
+    // air pembuka digambar dengan resolusi lebih rendah (fluid.js) dan blur kaca diganti
+    // kartu sedikit lebih pekat (CSS html.low-power). Perangkat lain tidak berubah sama sekali.
+    // fluid.js juga bisa memasang kelas ini sendiri bila frame-nya terukur lambat.
+    const perangkatLemah = (() => {
+        try {
+            const thread = navigator.hardwareConcurrency || 8;
+            const memoriGb = navigator.deviceMemory || 8;
+            return thread <= 4 || memoriGb <= 4;
+        } catch (e) { return false; }
+    })();
+    if (perangkatLemah) document.documentElement.classList.add('low-power');
 
     const fmt = (v, dec) => Number(v).toFixed(dec);
     const pad2 = (n) => (n < 10 ? '0' + n : String(n));
@@ -263,12 +279,16 @@
         const nilai = (t) => evalTrial(SENSORS, t);
         // Disimpan di luar state reaktif: elemen DOM & timer tidak boleh di-proxy Alpine.
         let toastTimer = null;
+        let barisTimer = null;   // jadwal penambahan baris History berikutnya
+        const rowsCache = { trials: null, rows: [] };
         let lastFocus = null;
         const uiTimers = [];
 
         const NAV = [
             { id: 'ringkasan', label: 'Dashboard', icon: 'dash', view: 'dashboard', target: null },
-            { id: 'riwayat', label: 'History', icon: 'chart', view: 'riwayat', target: null },
+            // Grafik dipindah dari Dashboard ke halaman sendiri; data tetap di History & Evaluation.
+            { id: 'grafik', label: 'Real-time Chart', icon: 'chart', view: 'grafik', target: null },
+            { id: 'riwayat', label: 'History', icon: 'history', view: 'riwayat', target: null },
             { id: 'evaluasi', label: 'Evaluation', icon: 'table', view: 'evaluasi', target: null },
         ];
 
@@ -286,6 +306,8 @@
             hover: null,
             detail: null,
             trialDetail: null,
+            trialDetailLoading: false,
+            barisTampil: BARIS_PER_TAHAP,   // jumlah baris History yang sudah digambar   // percobaan trial selesai sedang dimuat untuk dialog detail
             sidebarOpen: layarLebar(),   // laptop: kolom terbuka; HP/tablet: laci tertutup
             settingsOpen: false,
             prefs: bacaPengaturan(),
@@ -325,7 +347,7 @@
             chartRev: 0,
 
             init() {
-                fluid('setInk', lewatiIntro ? TINTA_DASHBOARD : TINTA_INTRO);
+                fluid('setInk', TINTA_INTRO);
                 // Dua frame: pastikan keadaan awal (opacity 0) sudah dilukis sebelum reveal.
                 setelahDilukis(() => { this.introReady = true; });
 
@@ -383,6 +405,7 @@
 
             destroy() {
                 clearTimeout(toastTimer);
+                clearTimeout(barisTimer);
                 uiTimers.forEach(clearTimeout);
             },
 
@@ -413,7 +436,6 @@
                     asal = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
                 }
                 if (!rm) fluid('explode', asal ? asal.x : undefined, asal ? asal.y : undefined);
-                fluid('setInk', TINTA_DASHBOARD);
                 if (view && view !== this.view) {
                     this.view = view;
                     this.nav = navId;
@@ -439,14 +461,14 @@
                 this.detail = null;
                 this.trialDetail = null;
                 this.dashLeaving = true;
-                fluid('setInk', TINTA_INTRO);
-                fluid('burst', 8, 1.4);
                 uiTimers.push(setTimeout(() => {
                     this.entered = false;
                     this.dashLeaving = false;
                     this.introLeaving = false;
                     this.introReady = false;
                     this.introGone = false;
+                    // Air (yang berhenti selama dashboard terbuka) menyala lagi dengan percikan kecil.
+                    fluid('burst', 8, 1.4);
                     window.scrollTo(0, 0);
                     // Kata-kata judul terpasang (opacity 0) dulu, baru reveal diputar ulang.
                     this.$nextTick(() => setelahDilukis(() => {
@@ -570,7 +592,7 @@
                         key: s.key, nama: s.nama, satuan: s.satuan, rangeTxt: s.range,
                         valTxt: fmt(v, s.dec), isBad: bad,
                         tile: bad ? 'tile-bad' : 'tile-' + s.key,
-                        lineColor: bad ? 'var(--bad)' : 'var(--primary)',
+                        lineColor: bad ? 'var(--bad)' : 'var(--sensor, var(--primary))',
                         up: !same && delta > 0,
                         deltaTxt: same ? '0' : fmt(Math.abs(delta), s.dec),
                         deltaWord: !prev ? 'first trial'
@@ -655,8 +677,13 @@
             },
 
             /* ---------- Tabel riwayat ---------- */
+            // Dibangun sekali per array trials (selalu diganti, tidak pernah diubah di tempat);
+            // tanpa ini setiap badge/filter/tabel membangun ulang ribuan baris.
             get allRows() {
-                return this.trials.map((t) => {
+                const trials = this.trials;
+                if (rowsCache.trials === trials) return rowsCache.rows;
+                rowsCache.trials = trials;
+                return rowsCache.rows = trials.map((t) => {
                     const e = nilai(t);
                     const cell = (s) => {
                         const v = t[s.key];
@@ -677,6 +704,20 @@
                 const q = this.q;
                 const f = this.filter;
                 return this.allRows.filter((r) => (f === 'baik' ? r.baik : (f === 'buruk' ? !r.baik : true)) && (!q || r.hay.indexOf(q) >= 0));
+            },
+            // Tabel History digambar bertahap: BARIS_PER_TAHAP baris dulu, sisanya ditambah
+            // per frame. Hasil akhirnya tabel yang sama; dengan ≤ BARIS_PER_TAHAP baris tidak
+            // ada bedanya. Mencegah halaman membeku saat satu trial punya ribuan percobaan.
+            get rowsTampil() {
+                const rows = this.rows;
+                return rows.length > this.barisTampil ? rows.slice(0, this.barisTampil) : rows;
+            },
+            lanjutkanBaris(total) {
+                if (this.barisTampil >= total) return;
+                clearTimeout(barisTimer);
+                barisTimer = setTimeout(() => {
+                    this.barisTampil = Math.min(total, this.barisTampil + BARIS_PER_TAHAP);
+                }, 16);
             },
             get total() { return this.trials.length; },
             get baikCount() { return this.allRows.filter((r) => r.baik).length; },
@@ -715,8 +756,24 @@
                 if (!trial.rata_rata) return 'none';
                 return this.trialStatusBaik(trial) ? 'good' : 'poor';
             },
-            openTrialDetail(trial) {
-                this.trialDetail = trial;
+            // Daftar Evaluasi hanya membawa ringkasan; percobaan trial ini dimuat saat dialog
+            // dibuka, supaya halaman & Sync tidak mengirim ribuan baris riwayat setiap kali.
+            async openTrialDetail(trial) {
+                this.trialDetail = { ...trial, percobaan: null };
+                this.trialDetailLoading = trial.jumlah_percobaan > 0;
+                if (!this.trialDetailLoading) {
+                    this.trialDetail.percobaan = [];
+                    return;
+                }
+                try {
+                    const json = await kirim(this.urls.trial_show.replace(':id', trial.id), null, 'GET');
+                    if (this.trialDetail && this.trialDetail.id === trial.id) this.trialDetail = json.trial;
+                } catch (e) {
+                    if (this.trialDetail && this.trialDetail.id === trial.id) this.trialDetail = null;
+                    this.showToast({ kind: 'error', retry: 'sync', title: 'Could not load the trial', msg: e.message });
+                } finally {
+                    this.trialDetailLoading = false;
+                }
             },
             trialPercobaanRows(trial) {
                 if (!trial || !trial.percobaan) return [];
@@ -871,11 +928,16 @@
             },
             get viewClass() { return this.leaving ? 'view-out' : (this.switched ? 'view-in' : ''); },
             get viewTitle() {
+                if (this.view === 'grafik') return 'Real-time Chart';
                 if (this.view === 'riwayat') return 'Trial History';
                 if (this.view === 'evaluasi') return 'Evaluation';
                 return 'Water Quality Monitoring Dashboard';
             },
             get viewSub() {
+                if (this.view === 'grafik') {
+                    if (!this.activeTrial) return 'No active trial · start a trial to plot its readings';
+                    return 'Readings of ' + this.activeTrial.name + ' · updated every time you sync' + (this.cur ? ' · latest Trial ' + this.curNoPad : '');
+                }
                 if (this.view === 'riwayat') return 'Every trial with its automatic evaluation notes' + (this.activeTrial ? ' — ' + this.activeTrial.name : '') + '.';
                 if (this.view === 'evaluasi') return 'History of all completed drinking water trials.';
                 if (!this.activeTrial) return 'No active trial · start a trial to begin monitoring';
@@ -902,6 +964,7 @@
                 this.nav = navId;
                 this.hover = null;
                 uiTimers.push(setTimeout(() => {
+                    if (view === 'riwayat') this.barisTampil = BARIS_PER_TAHAP;
                     this.view = view;
                     this.leaving = false;
                     this.$nextTick(() => {
@@ -946,13 +1009,19 @@
                 if (this.sync === 'loading' || this.power !== 'on') return;
                 this.sync = 'loading';
                 this.closeToast();
-                fluid('setTempo', 2.2);
                 try {
-                    const [json] = await Promise.all([kirim(this.urls.sinkron), jeda(JEDA_MIN)]);
+                    // Sync bertahap: beri tahu server percobaan terakhir yang sudah dimiliki,
+                    // supaya hanya percobaan baru yang dikirim (hasil akhirnya sama).
+                    const terakhir = this.trials[this.trials.length - 1];
+                    const sejak = this.activeTrial && terakhir
+                        ? { sejak_trial: this.activeTrial.id, sejak_nomor: terakhir.no }
+                        : {};
+                    const [json] = await Promise.all([kirim(this.urls.sinkron, sejak), jeda(JEDA_MIN)]);
                     const sebelum = this.trials.length;
-                    this.trials = json.percobaan;
+                    this.trials = json.mode === 'tambahan'
+                        ? this.trials.concat(json.percobaan_baru)
+                        : json.percobaan;
                     this.chartRev++;
-                    fluid('burst', 8, 1.3);
                     this.terapkanPerangkat(json.perangkat);
                     if (json.active_trial) this.activeTrial = json.active_trial;
                     this.newTrialStarted = false; // flag trial baru dibersihkan setelah sync
@@ -971,7 +1040,6 @@
                     this.showToast({ kind: 'error', retry: 'sync', title: 'Sync failed', msg: e.message });
                 } finally {
                     this.sync = 'idle';
-                    fluid('setTempo', 1);
                 }
             },
             async togglePower() {
@@ -1106,11 +1174,13 @@
     }
 
     // Tombol yang "kebanjiran" saat disentuh kursor (lihat .flood di CSS) juga
-    // memercikkan air ke latar fluida, tepat di tengah tombol.
+    // memercikkan air ke latar fluida, tepat di tengah tombol — hanya di layar pembuka,
+    // karena air tidak lagi digambar di dashboard.
     const SELEKTOR_BANJIR = '.btn-primary, .btn-outline, .btn-soft, .btn-warn, .btn-retry, .btn-close, .pill';
     function pasangPercikanTombol() {
         document.addEventListener('pointerover', (e) => {
             if (e.pointerType === 'touch' || reduceMotion()) return;
+            if (document.documentElement.classList.contains('is-dashboard')) return;
             const btn = e.target.closest(SELEKTOR_BANJIR);
             if (!btn || btn.disabled || btn.contains(e.relatedTarget)) return;
             const r = btn.getBoundingClientRect();

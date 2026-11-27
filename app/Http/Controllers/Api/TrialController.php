@@ -7,7 +7,6 @@ use App\Models\Perangkat;
 use App\Models\Trial;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class TrialController extends Controller
@@ -34,7 +33,7 @@ class TrialController extends Controller
         ]);
 
         return response()->json([
-            'trial' => $trial->untukDashboard(),
+            'trial' => $trial->ringkasan(),
             'perangkat' => $perangkat->untukDashboard(),
         ], 201);
     }
@@ -58,7 +57,7 @@ class TrialController extends Controller
         ]);
 
         return response()->json([
-            'trial' => $trial->fresh()->untukDashboard(),
+            'trial' => $trial->fresh()->ringkasan(),
             'perangkat' => $perangkat->untukDashboard(),
         ]);
     }
@@ -66,7 +65,17 @@ class TrialController extends Controller
     /** Daftar semua trial yang sudah selesai (untuk halaman evaluasi). */
     public function history(): JsonResponse
     {
-        return response()->json(['trials' => $this->historiSelesai(Perangkat::utama())]);
+        return response()->json(['trials' => Perangkat::utama()->ringkasanTrialSelesai()]);
+    }
+
+    /** Detail satu trial beserta semua percobaannya (dimuat saat dialog detail dibuka). */
+    public function show(Trial $trial): JsonResponse
+    {
+        if ($trial->perangkat_id !== Perangkat::utama()->id) {
+            return response()->json(['message' => 'Trial not found.'], 404);
+        }
+
+        return response()->json(['trial' => $trial->load('percobaan')->untukDashboard()]);
     }
 
     /**
@@ -90,34 +99,6 @@ class TrialController extends Controller
             $trial->delete();
         });
 
-        return response()->json(['trials' => $this->historiSelesai($perangkat)]);
-    }
-
-    /** @return Collection<int, array<string, mixed>> */
-    private function historiSelesai(Perangkat $perangkat): Collection
-    {
-        return Trial::where('perangkat_id', $perangkat->id)
-            ->where('is_active', false)
-            ->orderByDesc('ended_at')
-            ->with('percobaan')
-            ->get()
-            ->map->untukDashboard()
-            ->values();
-    }
-
-    /** Cek apakah ada trial aktif. */
-    public function status(): JsonResponse
-    {
-        $perangkat = Perangkat::utama();
-
-        $trial = Trial::where('perangkat_id', $perangkat->id)
-            ->where('is_active', true)
-            ->with('percobaan')
-            ->first();
-
-        return response()->json([
-            'has_active_trial' => $trial !== null,
-            'trial' => $trial?->untukDashboard(),
-        ]);
+        return response()->json(['trials' => $perangkat->ringkasanTrialSelesai()]);
     }
 }

@@ -10,8 +10,15 @@ use Illuminate\Http\Request;
 class PerangkatController extends Controller
 {
     /** Tombol "Sinkronkan" di dashboard: ambil data terbaru dari server. */
-    public function sinkron(): JsonResponse
+    public function sinkron(Request $request): JsonResponse
     {
+        // Opsional (dikirim dashboard): percobaan yang sudah dimiliki browser, supaya hanya
+        // percobaan baru yang dikirim. Tanpa parameter ini responsnya tetap data lengkap.
+        $sejak = $request->validate([
+            'sejak_trial' => ['nullable', 'integer', 'min:1'],
+            'sejak_nomor' => ['nullable', 'integer', 'min:0', 'required_with:sejak_trial'],
+        ]);
+
         $perangkat = Perangkat::utama();
 
         if (! $perangkat->isOnline()) {
@@ -24,7 +31,11 @@ class PerangkatController extends Controller
 
         $perangkat->forceFill(['terakhir_sinkron' => now()])->save();
 
-        return response()->json($perangkat->dataDashboard());
+        if (isset($sejak['sejak_trial'])) {
+            return response()->json($perangkat->dataSinkronTambahan((int) $sejak['sejak_trial'], (int) $sejak['sejak_nomor']));
+        }
+
+        return response()->json($perangkat->dataSinkron());
     }
 
     /** Saklar "Alat" di dashboard. Alat membaca status ini lewat ping. */
