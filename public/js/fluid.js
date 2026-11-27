@@ -14,8 +14,20 @@
     'use strict';
 
 function fluidSimulation(canvas) {
-    canvas.width = canvas.clientWidth;
-    canvas.height = canvas.clientHeight;
+    // Performance: the drawing buffer is RENDER_SCALE of the canvas' CSS size. The water
+    // is soft and blurred, so ~2/3 resolution looks the same but shades ~55% fewer pixels
+    // per frame. All splat/pointer positions stay in CSS px (cssW × cssH), so the flow
+    // behaves exactly as before.
+    const RENDER_SCALE = 0.66;
+    // Low-power quality (weak laptops/phones): html.low-power is set by dashboard.js from
+    // the CPU/RAM hints before this runs, or by maybeDowngrade() below when frames are slow.
+    const LOW_POWER = { SIM_RESOLUTION: 160, DYE_RESOLUTION: 448, PRESSURE_ITERATIONS: 14, RENDER_SCALE: 0.5 };
+    const startsLowPower = document.documentElement.classList.contains('low-power');
+    let renderScale = startsLowPower ? LOW_POWER.RENDER_SCALE : RENDER_SCALE;
+    let cssW = canvas.clientWidth;
+    let cssH = canvas.clientHeight;
+    canvas.width = Math.max(1, Math.round(cssW * renderScale));
+    canvas.height = Math.max(1, Math.round(cssH * renderScale));
 
     let config = {
         SIM_RESOLUTION: 248,        // higher sim grid: smoother, less jagged flow
@@ -69,6 +81,15 @@ function fluidSimulation(canvas) {
     if (isMobile() || Math.min(window.screen.width, window.screen.height) < 700) {
         config.SIM_RESOLUTION = 200;
         config.DYE_RESOLUTION = 512;
+    }
+    if (startsLowPower)
+        applyLowPowerConfig();
+
+    function applyLowPowerConfig() {
+        config.SIM_RESOLUTION = Math.min(config.SIM_RESOLUTION, LOW_POWER.SIM_RESOLUTION);
+        config.DYE_RESOLUTION = Math.min(config.DYE_RESOLUTION, LOW_POWER.DYE_RESOLUTION);
+        config.PRESSURE_ITERATIONS = Math.min(config.PRESSURE_ITERATIONS, LOW_POWER.PRESSURE_ITERATIONS);
+        renderScale = Math.min(renderScale, LOW_POWER.RENDER_SCALE);
     }
 
     // Ink multipliers, tempered for the long-lived (0.982) dye so colours layer
@@ -861,6 +882,7 @@ function fluidSimulation(canvas) {
 
     let rafHandle = 0;
     let destroyed = false;
+    const teardownLater = [];
 
     // Page controls: dye brightness & orbit tempo, eased per frame so the
     // opening screen → dashboard hand-off never feels abrupt.
@@ -871,12 +893,66 @@ function fluidSimulation(canvas) {
     let inkTarget = 1;
     let tempo = prefersReducedMotion ? 0.4 : 1;
     let tempoTarget = tempo;
-    let frameCount = 0;
     const root = document.documentElement;
     // Follows the theme on every screen (opening screen and dashboard): light water in the
     // light theme, dark water in the dark theme. Crossfades when the theme switches (e.g. 17:00).
     const wantsLight = () => (root.classList.contains('theme-dark') ? 0 : 1);
     let lightness = wantsLight();
+
+    // The water lives on the opening screen only. On the dashboard the canvas fades out
+    // (CSS, ~0.9 s) and then the simulation pauses completely: no GPU work at all while the
+    // dashboard is open. It resumes, where it left off, when the opening screen returns.
+    const DASHBOARD_FADE_MS = 1000;
+    // Opened straight into the dashboard (opening screen already seen): start paused.
+    let dashboardSince = root.classList.contains('is-dashboard') ? -Infinity : 0;
+    // Each frame advances by the real elapsed time (k), so the flow, dissipation and orbit
+    // keep the same speed on 30/60/120 Hz displays.
+    const FRAME_MS = 1000 / 60;
+    let lastFrameTime = 0;
+
+    // One-time runtime check for devices the CPU/RAM hints missed: after the opening burst
+    // (ADAPT_SKIP frames), average ADAPT_FRAMES visible frames; if they are slower than
+    // SLOW_FRAME_MS (≈ under 38 fps), switch to low-power quality once and keep it.
+    const ADAPT_SKIP = 90;
+    const ADAPT_FRAMES = 120;
+    const SLOW_FRAME_MS = 26;
+    let adaptFrame = 0;
+    let adaptTotal = 0;
+    let adaptDone = startsLowPower;
+    function maybeDowngrade(dt) {
+        if (adaptDone) return;
+        if (document.visibilityState !== 'visible') { adaptDone = true; return; }
+        adaptFrame++;
+        if (adaptFrame <= ADAPT_SKIP) return;
+        adaptTotal += dt;
+        if (adaptFrame < ADAPT_SKIP + ADAPT_FRAMES) return;
+        adaptDone = true;
+        if (adaptTotal / ADAPT_FRAMES <= SLOW_FRAME_MS) return;
+        applyLowPowerConfig();
+        root.classList.add('low-power');
+        initFramebuffers();   // smaller sim/dye grids, existing water carried over
+    }
+    let ambientClock = 0;
+
+    // Canvas visibility mirrors the CSS rules (fluid-flat fallback) via cheap class checks,
+    // instead of getComputedStyle() every frame, which forced a style recalculation.
+    const flatHidden = () => root.classList.contains('fluid-flat')
+        && (root.classList.contains('is-dashboard') || !root.classList.contains('theme-dark'));
+
+    // Size is tracked by ResizeObserver instead of reading clientWidth every frame.
+    if ('ResizeObserver' in window) {
+        const ro = new ResizeObserver((entries) => {
+            const box = entries[0].contentRect;
+            cssW = box.width;
+            cssH = box.height;
+        });
+        ro.observe(canvas);
+        teardownLater.push(() => ro.disconnect());
+    } else {
+        const onResize = () => { cssW = canvas.clientWidth; cssH = canvas.clientHeight; };
+        window.addEventListener('resize', onResize);
+        teardownLater.push(() => window.removeEventListener('resize', onResize));
+    }
 
     update();
 
@@ -884,25 +960,40 @@ function fluidSimulation(canvas) {
         if (destroyed) return;
         // A 0-sized canvas (hidden window/pane) gives a 0/0 = NaN aspect ratio that
         // permanently poisons every texture; skip frames until the size recovers.
-        if (canvas.clientWidth < 2 || canvas.clientHeight < 2) {
+        if (cssW < 2 || cssH < 2) {
             rafHandle = requestAnimationFrame(update);
             return;
         }
         // CSS hides the canvas only where the light water cannot be drawn (flat-shading
-        // fallback on the dashboard): skip all GL work until it is visible again.
-        if (getComputedStyle(canvas).visibility === 'hidden') {
+        // fallback): skip all GL work until it is visible again.
+        if (flatHidden()) {
             rafHandle = requestAnimationFrame(update);
             return;
         }
-        ink += (inkTarget - ink) * 0.04;
-        lightness += (wantsLight() - lightness) * 0.06;   // ≈ 0.8 s crossfade, matches the scrim
-        tempo += ((prefersReducedMotion ? Math.min(tempoTarget, 0.4) : tempoTarget) - tempo) * 0.05;
+        const now = performance.now();
+        if (root.classList.contains('is-dashboard')) {
+            if (!dashboardSince) dashboardSince = now;
+            if (now - dashboardSince > DASHBOARD_FADE_MS) {
+                lastFrameTime = 0;   // no catch-up jump when the opening screen comes back
+                rafHandle = requestAnimationFrame(update);
+                return;
+            }
+        } else {
+            dashboardSince = 0;
+        }
+        if (lastFrameTime) maybeDowngrade(now - lastFrameTime);
+        // k = frames' worth of time since the last step (1 at 60 fps, 2 at 30 fps).
+        const k = lastFrameTime ? Math.min(2.5, Math.max(0.5, (now - lastFrameTime) / FRAME_MS)) : 1;
+        lastFrameTime = now;
+        ink += (inkTarget - ink) * Math.min(1, 0.04 * k);
+        lightness += (wantsLight() - lightness) * Math.min(1, 0.06 * k);   // ≈ 0.8 s crossfade, matches the scrim
+        tempo += ((prefersReducedMotion ? Math.min(tempoTarget, 0.4) : tempoTarget) - tempo) * Math.min(1, 0.05 * k);
         resizeCanvas();
-        driveVirtualPointer();
-        pourAmbient();
+        driveVirtualPointer(k);
+        pourAmbient(k);
         input();
         if (!config.PAUSED)
-            step(0.016);
+            step(0.016 * k, k);
         render(null);
         rafHandle = requestAnimationFrame(update);
     }
@@ -910,14 +1001,14 @@ function fluidSimulation(canvas) {
     // An invisible auto-cursor orbits the centre FOREVER, independent of the real
     // pointer, splatting bright ink along a gently breathing orbit. Starts a beat
     // after load so the burst plays first.
-    function driveVirtualPointer() {
+    function driveVirtualPointer(k) {
         if (Date.now() - engineStart < ORBIT_START_DELAY)
             return;
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const base = Math.min(ORBIT_RADIUS, canvas.width * 0.35, canvas.height * 0.35);
+        const cx = cssW / 2;
+        const cy = cssH / 2;
+        const base = Math.min(ORBIT_RADIUS, cssW * 0.35, cssH * 0.35);
         const r = base * (0.72 + 0.28 * Math.sin(orbitAngle * 0.37));
-        orbitAngle += ORBIT_SPEED * tempo;
+        orbitAngle += ORBIT_SPEED * tempo * k;
         const x = cx + Math.cos(orbitAngle) * r;
         const y = cy + Math.sin(orbitAngle) * r;
         if (!virtualSeeded) {
@@ -933,8 +1024,9 @@ function fluidSimulation(canvas) {
             virtualColor.b *= VIRTUAL_INK;
             lastVColorTime = Date.now();
         }
-        const dx = (x - vPrevX) * 6.5;
-        const dy = (y - vPrevY) * 6.5;
+        // Velocity from displacement per 60 fps frame, so a 30 fps step pushes equally hard.
+        const dx = (x - vPrevX) * 6.5 / k;
+        const dy = (y - vPrevY) * 6.5 / k;
         vPrevX = x;
         vPrevY = y;
         splat(x, y, dx, dy, {
@@ -970,7 +1062,7 @@ function fluidSimulation(canvas) {
         }
     }
 
-    function step(dt) {
+    function step(dt, k) {
         gl.disable(gl.BLEND);
         gl.viewport(0, 0, simWidth, simHeight);
 
@@ -1023,7 +1115,7 @@ function fluidSimulation(canvas) {
         gl.uniform1i(advectionProgram.uniforms.uVelocity, velocityId);
         gl.uniform1i(advectionProgram.uniforms.uSource, velocityId);
         gl.uniform1f(advectionProgram.uniforms.dt, dt);
-        gl.uniform1f(advectionProgram.uniforms.dissipation, config.VELOCITY_DISSIPATION);
+        gl.uniform1f(advectionProgram.uniforms.dissipation, Math.pow(config.VELOCITY_DISSIPATION, k));
         blit(velocity.write.fbo);
         velocity.swap();
 
@@ -1033,7 +1125,7 @@ function fluidSimulation(canvas) {
             gl.uniform2f(advectionProgram.uniforms.dyeTexelSize, 1.0 / dyeWidth, 1.0 / dyeHeight);
         gl.uniform1i(advectionProgram.uniforms.uVelocity, velocity.read.attach(0));
         gl.uniform1i(advectionProgram.uniforms.uSource, density.read.attach(1));
-        gl.uniform1f(advectionProgram.uniforms.dissipation, config.DENSITY_DISSIPATION);
+        gl.uniform1f(advectionProgram.uniforms.dissipation, Math.pow(config.DENSITY_DISSIPATION, k));
         blit(density.write.fbo);
         density.swap();
     }
@@ -1151,7 +1243,7 @@ function fluidSimulation(canvas) {
         splatProgram.bind();
         gl.uniform1i(splatProgram.uniforms.uTarget, velocity.read.attach(0));
         gl.uniform1f(splatProgram.uniforms.aspectRatio, canvas.width / canvas.height);
-        gl.uniform2f(splatProgram.uniforms.point, x / canvas.width, 1.0 - y / canvas.height);
+        gl.uniform2f(splatProgram.uniforms.point, x / cssW, 1.0 - y / cssH);
         gl.uniform3f(splatProgram.uniforms.color, dx, -dy, 1.0);
         gl.uniform1f(splatProgram.uniforms.radius, config.SPLAT_RADIUS / 100.0);
         blit(velocity.write.fbo);
@@ -1166,17 +1258,18 @@ function fluidSimulation(canvas) {
 
     // Every AMBIENT_EVERY frames a soft pour lands at a random spot and drifts,
     // so the screen keeps distinct bodies of liquid instead of emptying out.
-    function pourAmbient() {
-        frameCount++;
-        if (frameCount % AMBIENT_EVERY !== 0)
+    function pourAmbient(frames) {
+        ambientClock += frames;
+        if (ambientClock < AMBIENT_EVERY)
             return;
+        ambientClock -= AMBIENT_EVERY;
         const color = generateColor();
         const k = AMBIENT_INK * ink;
         const angle = Math.random() * Math.PI * 2;
         const speed = 380 + Math.random() * 320;
         splat(
-            canvas.width * (0.12 + Math.random() * 0.76),
-            canvas.height * (0.12 + Math.random() * 0.76),
+            cssW * (0.12 + Math.random() * 0.76),
+            cssH * (0.12 + Math.random() * 0.76),
             Math.cos(angle) * speed,
             Math.sin(angle) * speed,
             { r: color.r * k, g: color.g * k, b: color.b * k }
@@ -1190,8 +1283,8 @@ function fluidSimulation(canvas) {
             color.r *= k;
             color.g *= k;
             color.b *= k;
-            const x = canvas.width * Math.random();
-            const y = canvas.height * Math.random();
+            const x = cssW * Math.random();
+            const y = cssH * Math.random();
             const dx = 1000 * (Math.random() - 0.5);
             const dy = 1000 * (Math.random() - 0.5);
             splat(x, y, dx, dy, color);
@@ -1199,9 +1292,11 @@ function fluidSimulation(canvas) {
     }
 
     function resizeCanvas() {
-        if (canvas.width != canvas.clientWidth || canvas.height != canvas.clientHeight) {
-            canvas.width = canvas.clientWidth;
-            canvas.height = canvas.clientHeight;
+        const w = Math.max(1, Math.round(cssW * renderScale));
+        const h = Math.max(1, Math.round(cssH * renderScale));
+        if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
             initFramebuffers();
         }
     }
@@ -1210,8 +1305,9 @@ function fluidSimulation(canvas) {
     // events and mapped into canvas space via its bounding rect. Listeners are
     // passive and never preventDefault, so page scroll is untouched.
     function pointerPos(clientX, clientY) {
-        const rect = canvas.getBoundingClientRect();
-        return { x: clientX - rect.left, y: clientY - rect.top };
+        // The canvas is position: fixed at inset 0, so viewport coordinates are already
+        // canvas CSS coordinates — no getBoundingClientRect() (a layout read) per mousemove.
+        return { x: clientX, y: clientY };
     }
 
     const teardown = [];
@@ -1288,6 +1384,7 @@ function fluidSimulation(canvas) {
             destroyed = true;
             if (rafHandle) cancelAnimationFrame(rafHandle);
             for (const off of teardown) off();
+            for (const off of teardownLater) off();
         },
         burst(amount, strength) {
             if (destroyed) return;

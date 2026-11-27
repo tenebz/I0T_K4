@@ -27,13 +27,14 @@
     <template x-if="!introGone">
         <section class="intro" :class="{ 'is-ready': introReady, 'is-leaving': introLeaving }" aria-labelledby="intro-title" @keydown.enter.window="if (document.activeElement === document.body) enterDashboard()">
             <header class="intro-nav lm-reveal" style="--d: 150ms; --from: translateY(calc(-0.75 * var(--u)))">
-                <a href="#ringkasan" class="intro-brand" @click.prevent="enterDashboard('dashboard', 'ringkasan')">
+                {{-- Logo di layar pembuka hanya identitas, bukan tautan (tidak mengarah ke mana pun) --}}
+                <div class="intro-brand">
                     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <path d="M2.5 9c2.5 0 2.5 4.2 5 4.2S10 9 12 9s2.5 4.2 5 4.2S19.5 9 21.5 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                         <path d="M2.5 15c2.5 0 2.5 4.2 5 4.2S10 15 12 15s2.5 4.2 5 4.2S19.5 15 21.5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.5"/>
                     </svg>
                     <span>AquaSense</span>
-                </a>
+                </div>
                 <nav class="intro-links" aria-label="Dashboard shortcuts">
                     <a href="#ringkasan" @click.prevent="enterDashboard('dashboard', 'ringkasan')">Dashboard</a>
                     <a href="#riwayat" @click.prevent="enterDashboard('riwayat', 'riwayat')">History</a>
@@ -185,6 +186,7 @@
                         <a class="nav" :class="{ active: n.active }" :href="'#' + n.id" @click.prevent="pickNav(n)" :aria-current="n.active ? 'page' : 'false'">
                             <svg x-show="n.icon === 'dash'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 12l4-3"/><path d="M7 15h10"/></svg>
                             <svg x-show="n.icon === 'chart'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-5 3 3 5-7"/></svg>
+                            <svg x-show="n.icon === 'history'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l3 2"/></svg>
                             <svg x-show="n.icon === 'table'" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><path d="m9 14 2 2 4-4"/></svg>
                             <span class="nav-label" x-text="n.label"></span>
                             <template x-if="n.badge">
@@ -340,7 +342,7 @@
                     <template x-if="!hasData">
                         <section class="kpis" aria-label="Sensors waiting for data">
                             <template x-for="s in sensorPlaceholders" :key="s.key">
-                                <article class="card kpi is-empty">
+                                <article class="card kpi is-empty" :class="'kpi-' + s.key">
                                     <div class="kpi-top">
                                         <div>
                                             <h3 class="kpi-name" x-text="s.nama"></h3>
@@ -369,25 +371,6 @@
                         </section>
                     </template>
 
-                    {{-- Empty chart: same frame as the history chart, with guidance --}}
-                    <template x-if="!hasData">
-                        <section class="card chart-card chart-empty" aria-label="History chart, no data yet">
-                            <div class="section-head">
-                                <div>
-                                    <h2 class="section-title"><span x-text="sampleLabel"></span> History</h2>
-                                    <p class="section-sub">Each trial will be plotted here, from the first reading to the latest.</p>
-                                </div>
-                            </div>
-                            <div class="chart-empty-plot">
-                                <svg class="chart-empty-wave" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c33 0 33-16 66-16s33 16 67 16 33-16 66-16 33 16 67 16 33-16 67-16 33 16 67 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 8"/></svg>
-                                <div class="chart-empty-text">
-                                    <strong>No data to chart yet</strong>
-                                    <span x-text="activeTrial ? 'Sync after the device sends its first reading.' : 'Start a trial, then sync to fetch readings from the device.'"></span>
-                                </div>
-                            </div>
-                        </section>
-                    </template>
-
                     {{-- Status --}}
                     <template x-if="hasData">
                         <section class="card status" :class="{ 'is-bad': !statusBaik }" aria-label="Water quality status">
@@ -407,7 +390,7 @@
                     <template x-if="hasData">
                         <section id="sensor" class="kpis" :class="{ 'is-syncing': sync === 'loading' }" aria-label="Latest sensor readings">
                             <template x-for="s in sensorCards" :key="s.key">
-                                <article class="card kpi" :class="{ 'is-bad': s.isBad }">
+                                <article class="card kpi" :class="['kpi-' + s.key, { 'is-bad': s.isBad }]">
                                     <div class="kpi-top">
                                         <div>
                                             <h3 class="kpi-name" x-text="s.nama"></h3>
@@ -450,13 +433,56 @@
                         </section>
                     </template>
 
-                    {{-- History chart --}}
+                    {{-- History & evaluation call to action --}}
                     <template x-if="hasData">
-                        <section id="riwayat-chart" class="card chart-card" :class="{ 'is-syncing': sync === 'loading' }" :aria-busy="(sync === 'loading').toString()" :aria-label="sampleLabel + ' history chart'">
+                        <section class="card cta" aria-label="Evaluation summary">
+                            <div class="cta-stats">
+                                <span class="cta-title">Evaluation of <span x-text="total"></span> trials</span>
+                                <span class="cta-stat ok"><span class="dot dot-ok" aria-hidden="true"></span><span x-text="baikCount"></span> good</span>
+                                <span class="cta-stat bad"><span class="diamond" aria-hidden="true"></span><span x-text="burukCount"></span> poor</span>
+                                <span class="sync-info">Pass rate <span x-text="pct"></span>%</span>
+                            </div>
+                            <div class="cta-actions">
+                                <a href="#grafik" class="btn-outline btn" @click.prevent="go('grafik', 'grafik', null)">View chart</a>
+                                <a href="#riwayat-page" class="btn-soft btn" @click.prevent="go('riwayat', 'riwayat', null)">Open history
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+                                </a>
+                            </div>
+                        </section>
+                    </template>
+                </div>
+            </template>
+
+            {{-- ============ VIEW: REAL-TIME CHART (dipindah dari Dashboard; data tetap tersimpan di History & Evaluation) ============ --}}
+            <template x-if="view === 'grafik'">
+                <div class="view" :class="viewClass">
+
+                    {{-- Empty chart: same frame as the real-time chart, with guidance --}}
+                    <template x-if="!hasData">
+                        <section class="card chart-card chart-empty" aria-label="Real-time chart, no data yet">
                             <div class="section-head">
                                 <div>
-                                    <h2 class="section-title"><span x-text="sampleLabel"></span> History</h2>
-                                    <p class="section-sub">Results for each trial. Hover or focus a point for details.</p>
+                                    <h2 class="section-title"><span x-text="sampleLabel"></span> Readings</h2>
+                                    <p class="section-sub">Each trial will be plotted here, from the first reading to the latest.</p>
+                                </div>
+                            </div>
+                            <div class="chart-empty-plot">
+                                <svg class="chart-empty-wave" viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30c33 0 33-16 66-16s33 16 67 16 33-16 66-16 33 16 67 16 33-16 67-16 33 16 67 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-dasharray="6 8"/></svg>
+                                <div class="chart-empty-text">
+                                    <strong>No data to chart yet</strong>
+                                    <span x-text="activeTrial ? 'Sync after the device sends its first reading.' : 'Start a trial, then sync to fetch readings from the device.'"></span>
+                                </div>
+                            </div>
+                        </section>
+                    </template>
+
+                    {{-- Real-time chart of the active trial --}}
+                    <template x-if="hasData">
+                        <section id="riwayat-chart" class="card chart-card" :class="{ 'is-syncing': sync === 'loading' }" :aria-busy="(sync === 'loading').toString()" :aria-label="sampleLabel + ' real-time chart'">
+                            <div class="section-head">
+                                <div>
+                                    <h2 class="section-title"><span x-text="sampleLabel"></span> Readings</h2>
+                                    <p class="section-sub">Each trial of the active session, from the first reading to the latest. Hover or focus a point for details.</p>
                                 </div>
                                 <div class="controls">
                                     <div class="select-wrap" :style="{ visibility: single ? 'visible' : 'hidden' }">
@@ -541,20 +567,6 @@
                         </section>
                     </template>
 
-                    {{-- History & evaluation call to action --}}
-                    <template x-if="hasData">
-                        <section class="card cta" aria-label="Evaluation summary">
-                            <div class="cta-stats">
-                                <span class="cta-title">Evaluation of <span x-text="total"></span> trials</span>
-                                <span class="cta-stat ok"><span class="dot dot-ok" aria-hidden="true"></span><span x-text="baikCount"></span> good</span>
-                                <span class="cta-stat bad"><span class="diamond" aria-hidden="true"></span><span x-text="burukCount"></span> poor</span>
-                                <span class="sync-info">Pass rate <span x-text="pct"></span>%</span>
-                            </div>
-                            <a href="#riwayat-page" class="btn-soft btn" @click.prevent="go('riwayat', 'riwayat', null)">Open history
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
-                            </a>
-                        </section>
-                    </template>
                 </div>
             </template>
 
@@ -601,7 +613,7 @@
                         </template>
 
                         <div class="table-wrap">
-                            <table class="table">
+                            <table class="table" x-effect="lanjutkanBaris(rows.length)">
                                 <thead>
                                 <tr>
                                     <th scope="col">Trial No.</th>
@@ -614,7 +626,7 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                <template x-for="r in rows" :key="r.no">
+                                <template x-for="r in rowsTampil" :key="r.no">
                                     <tr @click="openDetail(r.no)">
                                         <td><button type="button" class="row-btn" :id="'btn-percobaan-' + r.no" :aria-label="'Open details for trial ' + r.no">Trial <span x-text="r.noPad"></span></button></td>
                                         <td class="cell-date"><span style="color: inherit" x-text="r.tanggal"></span> <span x-text="'· ' + r.jam"></span></td>
@@ -763,7 +775,7 @@
                 <div>
                     <label for="setting-sidebar" class="setting-label"><span>Sidebar opacity</span><span class="setting-value" x-text="prefs.sidebar + '%'"></span></label>
                     <input id="setting-sidebar" type="range" min="40" max="100" step="1" :value="prefs.sidebar" @input="setPref('sidebar', +$event.target.value)">
-                    <p class="setting-hint">Lower values let more of the water show through. 100% is fully solid.</p>
+                    <p class="setting-hint">Lower values let more of the background show through. 100% is fully solid.</p>
                 </div>
                 <div class="settings-foot">
                     <span>Saved on this device</span>
@@ -921,6 +933,12 @@
                 </div>
 
                 {{-- Trials recorded in this session --}}
+                <template x-if="trialDetailLoading">
+                    <div class="detail-loading" role="status">
+                        <svg class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.2-8.55"/></svg>
+                        <span>Loading readings…</span>
+                    </div>
+                </template>
                 <template x-if="trialDetail.percobaan && trialDetail.percobaan.length > 0">
                     <div style="padding: 0 26px 16px">
                         <div class="detail-eval-label" style="margin-bottom: 10px">Trial History</div>

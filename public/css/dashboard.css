@@ -17,6 +17,20 @@
     --status-danger-bg:  #FEE2E2;  --status-danger:  #B91C1C;   /* Poor / Out of range 5.3:1 */
     --status-offline-bg: #F1F5F9;  --status-offline: #475569;   /* Offline / Off */
 
+    /* Aksen per sensor (kartu KPI, ikon, sparkline) — tetap dalam nuansa air */
+    --sensor-ph:        #6366F1;   /* indigo */
+    --sensor-tds:       #D97706;   /* amber */
+    --sensor-kekeruhan: #0D9488;   /* teal */
+    --sensor-suhu:      #EA580C;   /* coral */
+
+    /* Latar dashboard (statis, tanpa air WebGL): cahaya lembut + garis riak */
+    --dash-base-2: #EEF6FB;
+    --dash-glow-1: color-mix(in srgb, var(--primary) 16%, transparent);
+    --dash-glow-2: color-mix(in srgb, #22D3EE 14%, transparent);
+    --dash-glow-3: color-mix(in srgb, #14B8A6 11%, transparent);
+    --dash-ripple: color-mix(in srgb, var(--primary) 14%, transparent);
+    --ripples: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 600' fill='none' stroke='%23000' stroke-width='1.4'%3E%3Ccircle cx='600' cy='0' r='110'/%3E%3Ccircle cx='600' cy='0' r='175'/%3E%3Ccircle cx='600' cy='0' r='245'/%3E%3Ccircle cx='600' cy='0' r='320'/%3E%3Ccircle cx='600' cy='0' r='400'/%3E%3Ccircle cx='600' cy='0' r='485'/%3E%3Ccircle cx='600' cy='0' r='575'/%3E%3C/svg%3E");
+
     /* Dasar air gelap (layar pembuka & dashboard dalam tema dark) */
     --hero-base: #050B14;
 
@@ -75,8 +89,9 @@
     --offline-bg: var(--status-offline-bg);
     --offline-line: var(--border);
 
-    --glass-blur: blur(14px) saturate(120%);
-    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+    /* 10px (bukan 14px): blur dihitung ulang tiap frame air di belakang kaca, biayanya ~ radius */
+    --glass-blur: blur(10px) saturate(115%);
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 34px -18px rgba(2, 132, 199, 0.28);
     --shadow-bad: 0 0 0 1.5px color-mix(in srgb, var(--status-danger) 55%, transparent);
     --shadow-pop: 0 12px 32px rgba(15, 23, 42, 0.12);
     --focus-ring: 0 0 0 3px color-mix(in srgb, var(--primary) 25%, transparent);
@@ -100,12 +115,23 @@ html.theme-dark {
     --status-danger-bg:  color-mix(in srgb, #F87171 15%, transparent);  --status-danger:  #F87171;
     --status-offline-bg: color-mix(in srgb, #94A3B8 14%, transparent);  --status-offline: #94A3B8;
 
+    --sensor-ph:        #A5B4FC;
+    --sensor-tds:       #FCD34D;
+    --sensor-kekeruhan: #5EEAD4;
+    --sensor-suhu:      #FDBA74;
+
+    --dash-base-2: #07121F;
+    --dash-glow-1: color-mix(in srgb, #38BDF8 14%, transparent);
+    --dash-glow-2: color-mix(in srgb, #22D3EE 8%, transparent);
+    --dash-glow-3: color-mix(in srgb, #2DD4BF 8%, transparent);
+    --dash-ripple: color-mix(in srgb, #38BDF8 12%, transparent);
+
     --action-inverse: #38BDF8;    /* tombol utama: teks gelap di aqua terang (9:1) */
     --action-inverse-fg: #04111D;
     --on-status: #050B14;         /* putih di status terang gagal kontras */
     --row-hover: color-mix(in srgb, var(--heading) 6%, transparent);
     --overlay: rgba(2, 6, 12, 0.6);
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.3), 0 16px 36px -20px rgba(0, 0, 0, 0.6);
     --shadow-pop: 0 16px 40px rgba(0, 0, 0, 0.5);
 
     --glass-fill: color-mix(in srgb, white 8%, transparent);
@@ -154,11 +180,14 @@ html.theme-dark .intro ::selection { background: color-mix(in srgb, var(--primar
     position: fixed; inset: 0; width: 100%; height: 100%;
     z-index: 0; pointer-events: none; display: block;
 }
-/* Di dashboard air tetap bergerak, digambar fluid.js dalam versi terang (uLight).
-   Hanya GPU tanpa shading (html.fluid-flat) yang memakai kanvas solid; di situ
-   kanvas disembunyikan setelah fade dan fluid.js berhenti menggambar. */
-html.fluid-flat.is-dashboard .fluid-canvas { visibility: hidden; transition: visibility 0s linear 950ms; }
-/* Air datar juga tidak punya versi terang untuk layar pembuka light. */
+/* Air WebGL hanya di layar pembuka. Di dashboard kanvas memudar lalu disembunyikan,
+   dan fluid.js berhenti menggambar sama sekali (lihat DASHBOARD_FADE_MS). */
+.fluid-canvas { transition: opacity 600ms var(--ease-entrance); }
+html.is-dashboard .fluid-canvas {
+    opacity: 0; visibility: hidden;
+    transition: opacity 900ms var(--ease-entrance), visibility 0s linear 900ms;
+}
+/* Air datar (GPU tanpa shading) tidak punya versi terang untuk layar pembuka light. */
 html.fluid-flat:not(.theme-dark) .fluid-canvas { visibility: hidden; }
 html.theme-dark:not(.is-dashboard) body { background: var(--hero-base); }
 html.no-fluid .fluid-canvas { display: none; }
@@ -182,15 +211,26 @@ html.no-fluid.theme-dark:not(.is-dashboard) body {
     background: radial-gradient(115% 95% at 50% 46%,
         var(--scrim-strong) 0%, var(--scrim-strong) 24%, var(--scrim) 52%, var(--scrim-soft) 100%);
 }
-/* Dashboard: lapisan kanvas tipis meredam air terang agar angka & grafik tetap
-   terbaca; kartu solid putih di atasnya. Tanpa WebGL (atau shading datar) lapisan
-   ini menjadi warna solid. */
+/* Latar dashboard: statis (dilukis sekali, tanpa biaya per frame). Cahaya sky/aqua/teal
+   yang lembut di sudut, garis riak konsentris di kanan atas & kiri bawah, di atas gradasi
+   kanvas. Muncul dengan crossfade saat air pembuka memudar. */
 .scrim-dash {
     opacity: 0;
-    background: color-mix(in srgb, var(--canvas) 15%, transparent);
+    background:
+        radial-gradient(55% 50% at 0% 0%, var(--dash-glow-1), transparent 70%),
+        radial-gradient(40% 45% at 100% 8%, var(--dash-glow-2), transparent 70%),
+        radial-gradient(50% 55% at 88% 100%, var(--dash-glow-3), transparent 70%),
+        linear-gradient(180deg, var(--canvas) 0%, var(--dash-base-2) 100%);
 }
-html.theme-dark .scrim-dash { background: color-mix(in srgb, var(--canvas) 55%, transparent); }   /* air gelap lebih terang: redam lebih banyak */
-html.no-fluid .scrim-dash, html.fluid-flat .scrim-dash { background: var(--canvas); }
+.scrim-dash::before, .scrim-dash::after {
+    content: ''; position: absolute; pointer-events: none;
+    width: min(62vw, 760px); aspect-ratio: 1;
+    background: var(--dash-ripple);
+    -webkit-mask: var(--ripples) center / contain no-repeat;
+    mask: var(--ripples) center / contain no-repeat;
+}
+.scrim-dash::before { top: 0; right: 0; }
+.scrim-dash::after { left: 0; bottom: 0; transform: rotate(180deg); opacity: .7; }
 html.is-dashboard .scrim-intro { opacity: 0; }
 html.is-dashboard .scrim-dash { opacity: 1; }
 .root { position: relative; z-index: 2; }
@@ -209,7 +249,8 @@ html.is-dashboard .scrim-dash { opacity: 1; }
 @keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
 @keyframes ripple { from { opacity: .32; transform: scale(0); } to { opacity: 0; transform: scale(1); } }
-@keyframes livePulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--status-ok) 55%, transparent); } 70% { box-shadow: 0 0 0 7px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+/* Hanya transform & opacity: dijalankan compositor GPU, tanpa repaint tiap frame (box-shadow memicu repaint). */
+@keyframes livePulse { 0% { transform: scale(1); opacity: .55; } 70% { transform: scale(2.6); opacity: 0; } 100% { transform: scale(2.6); opacity: 0; } }
 @keyframes valueFlash {
     0% { color: var(--primary-strong); text-shadow: none; }
     100% { text-shadow: 0 0 0 transparent; }
@@ -276,7 +317,7 @@ html.is-dashboard .scrim-dash { opacity: 1; }
     font-weight: 500; font-size: calc(1.15 * var(--u)); letter-spacing: -0.01em;
     color: var(--on-media); text-decoration: none;
 }
-.intro-brand:hover { color: var(--on-media); }
+.intro-brand { cursor: default; -webkit-user-select: none; user-select: none; }   /* identitas saja, bukan tautan */
 .intro-brand svg { width: calc(1.35 * var(--u)); height: calc(1.35 * var(--u)); }
 .intro-links {
     display: none;
@@ -541,7 +582,12 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
 .dot-ok { background: var(--ok); }
 .dot-bad { background: var(--bad); }
 .dot-offline { background: var(--offline); }
-.chip-online .dot-ok { animation: livePulse 2.2s ease-out infinite; }
+.chip-online .dot-ok { position: relative; }
+.chip-online .dot-ok::after {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: var(--status-ok); pointer-events: none;
+    animation: livePulse 2.2s ease-out infinite;
+}
 .dot-ring { width: 9px; height: 9px; border-radius: 50%; border: 2px solid var(--offline); }
 .diamond { width: 8px; height: 8px; background: var(--bad); transform: rotate(45deg); flex: 0 0 auto; }
 .notif { position: relative; }
@@ -790,7 +836,7 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
 /* ---------- Kartu ---------- */
 .view { display: flex; flex-direction: column; gap: 24px; }
 .card {
-    background: var(--panel); border: 1px solid var(--line); border-radius: 20px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 22px;
     box-shadow: var(--shadow-card);
     backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
 }
@@ -810,6 +856,21 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
 }
 .status.is-bad::before { background: var(--bad-strong); }
 .status:not(.is-bad) { border-color: var(--ok-line); }
+.status {
+    --status-tone: var(--ok-strong);
+    background:
+        linear-gradient(110deg, color-mix(in srgb, var(--status-tone) 11%, transparent) 0%, transparent 58%),
+        var(--panel);
+}
+.status.is-bad { --status-tone: var(--bad-strong); }
+.status::after {
+    content: ''; position: absolute; top: 50%; right: -60px; z-index: 0; pointer-events: none;
+    width: 340px; aspect-ratio: 1; transform: translateY(-50%);
+    background: var(--status-tone); opacity: .16;
+    -webkit-mask: var(--ripples) center / contain no-repeat;
+    mask: var(--ripples) center / contain no-repeat;
+}
+.status-main, .status-action { position: relative; z-index: 1; }
 .status-main { display: flex; flex-direction: column; gap: 6px; flex: 1 1 420px; min-width: 0; }
 .status > .btn { position: relative; }
 .status-eyebrow { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
@@ -827,7 +888,17 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
     padding: 18px 18px 16px 20px; display: flex; flex-direction: column; gap: 12px;
     transition: transform .25s var(--ease-entrance), border-color .2s ease-out, box-shadow .25s ease-out;
 }
-.kpi:hover { transform: translateY(-2px); border-color: var(--line-strong); box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06); }
+.kpi-ph { --sensor: var(--sensor-ph); }
+.kpi-tds { --sensor: var(--sensor-tds); }
+.kpi-kekeruhan { --sensor: var(--sensor-kekeruhan); }
+.kpi-suhu { --sensor: var(--sensor-suhu); }
+.kpi::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px; pointer-events: none;
+    background: linear-gradient(90deg, var(--sensor, var(--primary)), color-mix(in srgb, var(--sensor, var(--primary)) 10%, transparent));
+}
+.kpi.is-bad::before { background: linear-gradient(90deg, var(--bad-strong), color-mix(in srgb, var(--bad-strong) 10%, transparent)); }
+.kpi.is-empty::before { opacity: .45; }
+.kpi:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--sensor, var(--primary)) 40%, var(--line)); box-shadow: var(--shadow-card), 0 10px 24px -14px color-mix(in srgb, var(--sensor, var(--primary)) 55%, transparent); }
 .kpi.is-bad:hover { border-color: transparent; box-shadow: var(--shadow-bad); }
 .kpis.is-syncing .kpi::after {
     content: ''; position: absolute; inset: 0; pointer-events: none;
@@ -848,7 +919,11 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
     transition: transform .3s var(--ease-entrance);
 }
 .kpi:hover .tile { transform: rotate(-6deg) scale(1.05); }
-.tile-ph, .tile-tds, .tile-kekeruhan, .tile-suhu { background: var(--primary-soft); color: var(--primary); }
+.tile-ph, .tile-tds, .tile-kekeruhan, .tile-suhu {
+    background: color-mix(in srgb, var(--sensor, var(--primary)) 14%, transparent);
+    color: var(--sensor, var(--primary));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sensor, var(--primary)) 20%, transparent);
+}
 .tile-bad { background: var(--bad-bg); color: var(--bad); }
 .kpi-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
 .tag {
@@ -870,7 +945,12 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
 .spark-dot { position: absolute; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 
 /* Grafik */
-.chart-card { padding: 24px 28px 18px; }
+.chart-card {
+    padding: 24px 28px 18px;
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--primary) 6%, transparent) 0%, transparent 140px),
+        var(--panel);
+}
 .section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
 .section-title { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; color: var(--heading); }
 .section-title.sm { font-size: 20px; }
@@ -1028,6 +1108,7 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
 /* Ajakan evaluasi */
 .cta { padding: 18px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
 .cta-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.cta-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .cta-title { font-size: 17px; font-weight: 600; }
 .cta-stat { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
 .cta-stat.ok { color: var(--ok-text); }
@@ -1201,6 +1282,7 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
 .detail-range { font-size: 13px; color: var(--muted); }
 .detail-eval { margin: 0 26px; padding: 14px 16px; background: color-mix(in srgb, var(--heading) 4%, transparent); border: 1px solid var(--line-soft); border-radius: 14px; }
 .detail-eval-label { font-size: 13px; font-weight: 700; color: var(--muted); }
+.detail-loading { display: flex; align-items: center; gap: 8px; padding: 4px 26px 18px; font-size: 14px; color: var(--muted); }
 .detail-eval-text { font-size: 15px; margin-top: 4px; line-height: 1.5; }
 .dialog-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding: 18px 26px 22px; }
 .dialog-foot .pager { display: flex; gap: 8px; }
@@ -1264,6 +1346,26 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
     .toasts { top: 16px; right: 16px; max-width: calc(100% - 32px); }
 }
 
+/* Mode hemat (html.low-power: laptop/HP lemah, dipasang dashboard.js / fluid.js) dan
+   preferensi "reduce transparency": tanpa backdrop-filter (blur dihitung ulang setiap
+   scroll/frame dan berat di GPU lemah). Kartu & sidebar dibuat sedikit lebih pekat sebagai
+   ganti blur, supaya tampilannya tetap sama dan latar tidak "tembus" lebih tajam. */
+html.low-power {
+    --glass-blur: none;
+    --panel: color-mix(in srgb, var(--surface) min(100%, calc(var(--card-opacity) + 22%)), transparent);
+}
+html.low-power .sidebar { background: color-mix(in srgb, var(--surface-nav) min(100%, calc(var(--sidebar-opacity) + 22%)), transparent); }
+html.low-power .intro-links, html.low-power .overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
+html.low-power .intro-links { background: color-mix(in srgb, var(--canvas) 55%, transparent); }   /* pill tetap terbaca di atas air tanpa blur */
+@media (prefers-reduced-transparency: reduce) {
+    html {
+        --glass-blur: none;
+        --panel: color-mix(in srgb, var(--surface) min(100%, calc(var(--card-opacity) + 22%)), transparent);
+    }
+    .sidebar { background: color-mix(in srgb, var(--surface-nav) min(100%, calc(var(--sidebar-opacity) + 22%)), transparent); }
+    .intro-links, .overlay { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .pop, .toast, .dialog, .view-in { animation-name: fadeIn; }
     .view-out { animation-name: fadeOut; }
@@ -1273,7 +1375,7 @@ html.theme-dark .intro .pill:focus-visible { box-shadow: 0 0 0 2px color-mix(in 
     .app.is-in .topbar, .app.is-in .sidebar, .app.is-in .page-head, .app.is-in .view > *, .app.is-in .kpis > .kpi,
     .app.is-in .content > .banner, .app.is-in .content > .no-data, .table tbody tr { animation: fadeIn .3s ease-out backwards; animation-delay: 0ms; }
     .chart.is-armed, .spark.is-armed, .bar-grow.is-armed { --rx: 200 !important; }
-    .btn.is-loading::before, .pill.is-loading::before, .kpis.is-syncing .kpi::after, .chart-card.is-syncing .plot::after, .chip-online .dot-ok, .empty-state-icon::after { animation: none; }
+    .btn.is-loading::before, .pill.is-loading::before, .kpis.is-syncing .kpi::after, .chart-card.is-syncing .plot::after, .chip-online .dot-ok::after, .empty-state-icon::after { animation: none; }
     .kpi:hover, .btn-primary:hover:not(:disabled), .btn-outline:hover:not(:disabled), .btn-soft:hover, .btn-warn:hover:not(:disabled), .pill:hover { transform: none; }
     .pt, .pt-label, .x-label, .band { transition: none; }
     .btn-primary::after, .btn-outline::after, .btn-soft::after, .btn-warn::after, .btn-retry::after, .btn-close::after, .pill::after { animation: none; transition-duration: .15s; }

@@ -20,6 +20,7 @@ class DashboardController extends Controller
                 'trial_history' => route('api.trial.history'),
                 // ":id" diganti dengan id trial di dashboard.js.
                 'trial_destroy' => str_replace('999999999', ':id', route('api.trial.destroy', ['trial' => 999999999])),
+                'trial_show' => str_replace('999999999', ':id', route('api.trial.show', ['trial' => 999999999])),
             ],
         ];
 

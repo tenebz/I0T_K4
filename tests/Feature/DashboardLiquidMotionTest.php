@@ -26,6 +26,8 @@ class DashboardLiquidMotionTest extends TestCase
         $response->assertSee('Go to Dashboard');
         $response->assertSee('© 2026 AquaSense - Made with ❤️ by Erkham, faishal, Najwa, Ratri, Pebri, Sultan, Iim, Galih, Via');
         $response->assertSee('enterDashboard(\'riwayat\', \'riwayat\')', false);
+        $response->assertSee('<div class="intro-brand">', false);
+        $response->assertDontSee('class="intro-brand" @click', false);
     }
 
     public function test_dashboard_renders_empty_states_when_no_trials_exist(): void
@@ -64,6 +66,26 @@ class DashboardLiquidMotionTest extends TestCase
         $response->assertSee('class="status-main"', false);
         $response->assertSee('x-text="systemThemeHint()"', false);
         $response->assertDontSee("System follows your device's light or dark setting.");
+    }
+
+    public function test_chart_lives_on_its_own_real_time_chart_page(): void
+    {
+        $response = $this->get(route('dashboard'));
+        $html = $response->getContent();
+
+        $response->assertOk();
+        $response->assertSee('<template x-if="view === \'grafik\'">', false);
+        $response->assertSee("go('grafik', 'grafik', null)", false);
+
+        // The chart controls sit inside the new view, not in the Dashboard view.
+        $dashboardView = strpos($html, "x-if=\"view === 'dashboard'\"");
+        $chartView = strpos($html, "x-if=\"view === 'grafik'\"");
+        $historyView = strpos($html, "x-if=\"view === 'riwayat'\"");
+        $chartControls = strpos($html, 'id="pilih-sensor"');
+        $this->assertNotFalse($chartControls);
+        $this->assertGreaterThan($chartView, $chartControls);
+        $this->assertLessThan($historyView, $chartControls);
+        $this->assertLessThan($chartView, $dashboardView);
     }
 
     public function test_dashboard_header_logo_links_back_to_the_opening_screen(): void

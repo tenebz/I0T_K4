@@ -23,3 +23,22 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Kompresi (Apache): HTML/CSS/JS/JSON/SVG dikirim gzip — ±323 KB jadi ±73 KB per kunjungan pertama.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/css text/plain text/javascript application/javascript application/json image/svg+xml
+</IfModule>
+
+# Cache browser untuk aset statis. File yang dipanggil dengan ?v=<filemtime> (dashboard.css,
+# dashboard.js, fluid.js, favicon, halaman error) berganti URL setiap kali isinya berubah,
+# jadi aman di-cache setahun. Aset tanpa ?v= (mis. js/vendor/alpine.min.js) cukup 7 hari.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(css|js|svg|woff2?|png|ico)$">
+        <If "%{QUERY_STRING} =~ /(^|&)v=/">
+            Header set Cache-Control "public, max-age=31536000, immutable"
+        </If>
+        <Else>
+            Header set Cache-Control "public, max-age=604800"
+        </Else>
+    </FilesMatch>
+</IfModule>
