@@ -101,20 +101,4 @@ class TrialController extends Controller
 
         return response()->json(['trials' => $perangkat->ringkasanTrialSelesai()]);
     }
-
-    /** Cek apakah ada trial aktif. */
-    public function status(): JsonResponse
-    {
-        $perangkat = Perangkat::utama();
-
-        $trial = Trial::where('perangkat_id', $perangkat->id)
-            ->where('is_active', true)
-            ->with('percobaan')
-            ->first();
-
-        return response()->json([
-            'has_active_trial' => $trial !== null,
-            'trial' => $trial?->untukDashboard(),
-        ]);
-    }
 }

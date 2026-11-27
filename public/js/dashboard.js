@@ -280,6 +280,7 @@
         // Disimpan di luar state reaktif: elemen DOM & timer tidak boleh di-proxy Alpine.
         let toastTimer = null;
         let barisTimer = null;   // jadwal penambahan baris History berikutnya
+        const rowsCache = { trials: null, rows: [] };
         let lastFocus = null;
         const uiTimers = [];
 
@@ -676,8 +677,13 @@
             },
 
             /* ---------- Tabel riwayat ---------- */
+            // Dibangun sekali per array trials (selalu diganti, tidak pernah diubah di tempat);
+            // tanpa ini setiap badge/filter/tabel membangun ulang ribuan baris.
             get allRows() {
-                return this.trials.map((t) => {
+                const trials = this.trials;
+                if (rowsCache.trials === trials) return rowsCache.rows;
+                rowsCache.trials = trials;
+                return rowsCache.rows = trials.map((t) => {
                     const e = nilai(t);
                     const cell = (s) => {
                         const v = t[s.key];
